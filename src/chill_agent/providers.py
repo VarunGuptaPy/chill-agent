@@ -67,9 +67,18 @@ def build_image_provider(settings: Settings):
         )
         return SDXLLocalClient()
 
+    elif provider == "local_placeholder":
+        from chill_agent.services.image.local_placeholder import LocalPlaceholderClient
+
+        logger.warning(
+            "local_placeholder_selected",
+            message="Using local placeholder images. For testing only — not for real videos.",
+        )
+        return LocalPlaceholderClient()
+
     else:
         raise ValueError(
-            f"Unknown image provider: {provider}. Use 'replicate_flux' or 'sdxl_local'."
+            f"Unknown image provider: {provider}. Use 'replicate_flux', 'sdxl_local', or 'local_placeholder'."
         )
 
 

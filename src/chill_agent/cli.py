@@ -142,9 +142,15 @@ def run_once(
 @app.command(name="dry-run")
 def dry_run(
     run_id: Optional[str] = typer.Option(None, "--run-id", help="Resume a previous dry-run from where it left off"),
+    mock_images: bool = typer.Option(False, "--mock-images", help="Use local placeholder images instead of Replicate (free, for testing)"),
 ):
     """Full pipeline without uploading to YouTube. Safe for testing."""
     settings, repo, llm, tts, image_provider, _ = _get_deps()
+
+    if mock_images:
+        from chill_agent.services.image.local_placeholder import LocalPlaceholderClient
+        image_provider = LocalPlaceholderClient()
+        console.print("[yellow]Using local placeholder images (--mock-images)[/yellow]")
 
     from chill_agent.orchestrator import make_one_video
 

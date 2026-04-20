@@ -11,6 +11,9 @@ logger = structlog.get_logger()
 
 _FONT_PATH = Path(__file__).parent.parent.parent.parent / "assets" / "fonts" / "Anton-Regular.ttf"
 
+# Top gradient bar covers top 30% of image for text readability
+_GRADIENT_HEIGHT_RATIO = 0.30
+
 
 def make_thumbnail(
     raw_image_path: Path,
@@ -36,8 +39,8 @@ def make_thumbnail(
     words = title.split()
     overlay_text = " ".join(words[:5]).upper()
 
-    _render_thumbnail(raw_image_path, overlay_text, path_a, text_position="bottom_left")
-    _render_thumbnail(raw_image_path, overlay_text, path_b, text_position="top_right")
+    _render_thumbnail(raw_image_path, overlay_text, path_a, variant="a")
+    _render_thumbnail(raw_image_path, overlay_text, path_b, variant="b")
 
     logger.info("thumbnails_created", a=str(path_a), b=str(path_b))
     return path_a, path_b
@@ -47,7 +50,7 @@ def _render_thumbnail(
     source: Path,
     text: str,
     output: Path,
-    text_position: str = "bottom_left",
+    variant: str = "a",
     target_size: Tuple[int, int] = (1280, 720),
 ) -> None:
     from PIL import Image, ImageDraw, ImageFont
@@ -55,39 +58,58 @@ def _render_thumbnail(
     img = Image.open(str(source)).convert("RGB")
     img = img.resize(target_size, Image.LANCZOS)
 
+    w, h = target_size
+    gradient_h = int(h * _GRADIENT_HEIGHT_RATIO)
+
+    # Draw semi-transparent dark gradient bar at top
+    overlay = Image.new("RGBA", (w, gradient_h), (0, 0, 0, 0))
+    draw_ov = ImageDraw.Draw(overlay)
+    for y in range(gradient_h):
+        # Opacity: 180 at top, 0 at bottom (fade out)
+        alpha = int(180 * (1.0 - y / gradient_h))
+        draw_ov.line([(0, y), (w, y)], fill=(0, 0, 0, alpha))
+
+    img_rgba = img.convert("RGBA")
+    img_rgba.paste(overlay, (0, 0), overlay)
+    img = img_rgba.convert("RGB")
+
     draw = ImageDraw.Draw(img)
 
-    # Load font
-    font_size = 90
+    # Auto-scale font to fit within top gradient area
+    max_font_size = int(gradient_h * 0.55)
+    font_size = max(28, min(max_font_size, 90))
     font = _load_font(font_size)
 
-    # Wrap text to fit
-    lines = _wrap_text(text, font, draw, max_width=int(target_size[0] * 0.75))
+    # Shrink font until text fits in 90% of width
+    max_text_width = int(w * 0.90)
+    while font_size > 24:
+        lines = _wrap_text(text, font, draw, max_width=max_text_width)
+        line_height = font_size + 8
+        total_h = len(lines) * line_height
+        if total_h <= gradient_h - 10:
+            break
+        font_size -= 4
+        font = _load_font(font_size)
 
-    line_height = font_size + 10
+    lines = _wrap_text(text, font, draw, max_width=max_text_width)
+    line_height = font_size + 8
     total_text_height = len(lines) * line_height
 
-    w, h = target_size
+    # Center text horizontally; place in top gradient zone
+    # variant "b" shifts text slightly right for A/B variety
+    y_start = max(8, (gradient_h - total_text_height) // 2)
 
-    if text_position == "bottom_left":
-        x = 40
-        y = h - total_text_height - 60
-    elif text_position == "top_right":
-        # Right-align
-        max_line_w = max(draw.textlength(l, font=font) for l in lines) if lines else 200
-        x = w - int(max_line_w) - 40
-        y = 60
-    else:
-        x, y = 40, 60
-
-    # Draw each line with thick black stroke + white fill
     for line in lines:
-        _draw_text_with_stroke(draw, line, x, y, font, fill="white", stroke="black", stroke_width=4)
-        y += line_height
-
-    # Slight red accent bar under text (optional)
-    bar_y = y + 5
-    draw.rectangle([x - 5, bar_y, x + 300, bar_y + 6], fill="#E53935")
+        try:
+            line_w = draw.textlength(line, font=font)
+        except Exception:
+            line_w = len(line) * font_size * 0.6
+        if variant == "b":
+            x = min(int(w * 0.55), w - int(line_w) - 20)
+        else:
+            x = max(20, (w - int(line_w)) // 2)
+        _draw_text_with_stroke(draw, line, x, y_start, font, fill="white", stroke="black", stroke_width=3)
+        y_start += line_height
 
     output.parent.mkdir(parents=True, exist_ok=True)
     img.save(str(output), "JPEG", quality=95)

@@ -22,7 +22,10 @@ def _make_script_json() -> str:
             "number": i,
             "label": f"Weird Thing {i}",
             "narration": f"Number {i}: Weird Thing {i}\n\n" + ("This is sample narration. " * 40),
-            "image_prompt": f"A cartoon illustrating weird thing {i}.",
+            "image_prompts": [
+                f"A stick figure introducing weird thing {i}.",
+                f"A stick figure reacting to weird thing {i}.",
+            ],
         })
 
     return json.dumps({
@@ -71,6 +74,8 @@ def mock_llm():
     def complete(*, system, user, temperature=1.0, json_mode=False, max_tokens=8192):
         if "Generate 10 viral" in user or "ideation" in system.lower():
             content = _make_ideation_json()
+        elif "moderation" in system.lower() or "sexual content" in user:
+            content = "SAFE"
         else:
             content = _make_script_json()
         return LLMResult(content=content, input_tokens=100, output_tokens=200, model="deepseek-chat")

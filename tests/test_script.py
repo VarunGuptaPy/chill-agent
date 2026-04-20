@@ -18,14 +18,18 @@ def _make_valid_script_json(
             "number": i,
             "label": f"Label {i}",
             "narration": narration,
-            "image_prompt": f"A flat cartoon illustration showing concept {i}.",
+            "image_prompts": [
+                f"A stick figure introducing concept {i}, simple background.",
+                f"A stick figure demonstrating concept {i} with exaggerated expression.",
+                f"A stick figure punchline reaction for concept {i}.",
+            ],
         })
 
     return json.dumps({
         "title": title,
         "description": "A creepy video about brains. {CHAPTERS} #psychology",
         "tags": ["psychology", "brain", "science", "weird", "creepy"],
-        "thumbnail_prompt": "A cartoon brain with wide eyes.",
+        "thumbnail_prompt": "Four stick figures with shocked expressions.",
         "segments": segments,
         "outro": "That's all for today, I'll be making similar videos in the future. Subscribe to see them.",
     })
@@ -82,7 +86,7 @@ def test_content_check_rejects_short_script():
         "tags": [],
         "thumbnail_prompt": "",
         "segments": [
-            {"number": 1, "label": "A", "narration": "Number 1: A\nVery short.", "image_prompt": ""}
+            {"number": 1, "label": "A", "narration": "Number 1: A\nVery short.", "image_prompts": [""]}
         ],
         "outro": "That's all for today, I'll be making similar videos in the future. Subscribe to see them.",
     })
@@ -106,7 +110,8 @@ def test_script_segment_properties():
         number=5,
         label="Button Phobia",
         narration="Number five: Button Phobia\n\nSome text here.",
-        image_prompt="A cartoon with buttons.",
+        image_prompts=["A stick figure touching a button.", "A stick figure recoiling in horror."],
     )
     assert seg.number == 5
     assert seg.label == "Button Phobia"
+    assert len(seg.image_prompts) == 2

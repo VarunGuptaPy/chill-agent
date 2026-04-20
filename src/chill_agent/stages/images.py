@@ -1,4 +1,4 @@
-"""Stage 4: Image generation — generates one image per segment + thumbnail."""
+"""Stage 4: Image generation — 2-4 images per segment + thumbnail, with NSFW safety."""
 
 from __future__ import annotations
 
@@ -11,7 +11,11 @@ import structlog
 
 from chill_agent.services.image.base import ImageProvider, ImageResult
 from chill_agent.stages.script import Script
-from chill_agent.utils.paths import images_dir, segment_image_path, thumbnail_raw_path
+from chill_agent.utils.paths import (
+    images_dir,
+    segment_sub_image_path,
+    thumbnail_raw_path,
+)
 
 logger = structlog.get_logger()
 
@@ -19,10 +23,31 @@ _STYLE_SUFFIX_PATH = (
     Path(__file__).parent.parent.parent.parent / "config" / "style_suffix.txt"
 )
 
+# Safety suffix appended to every prompt sent to the model
+_SAFETY_SUFFIX = (
+    ", safe for work, family friendly, no nudity, no violence, "
+    "no blood, no weapons, cartoon style"
+)
+
+# Blocklist — any prompt containing these terms is replaced with a safe fallback
+_NSFW_BLOCKLIST = [
+    "nude", "naked", "nsfw", "porn", "sex", "erotic", "lingerie",
+    "bikini", "underwear", "topless", "breast", "genitalia", "buttocks",
+    "seductive", "provocative", "sensual", "intimate", "fetish",
+    "gore", "blood", "dismember", "torture", "mutilat", "decapitat",
+    "drug", "cocaine", "heroin", "meth", "syringe",
+    "rifle", "pistol", "knife attack",
+    "racist", "nazi", "swastika", "hate",
+    "child abuse", "minor", "underage",
+]
+
+_SAFE_FALLBACK_PROMPT = "stick figure character standing and looking curious, simple background"
+
 
 @dataclass
 class ImagesResult:
-    segment_image_paths: List[Path]
+    # List of lists — outer index = segment, inner = per-image paths
+    segment_image_paths: List[List[Path]]
     thumbnail_path: Path
     total_images: int
 
@@ -35,81 +60,108 @@ def generate_images(
     force: bool = False,
     max_workers: int = 1,
 ) -> ImagesResult:
-    """Generate all segment images + thumbnail in parallel."""
+    """Generate 2-4 images per segment + thumbnail. Sequential by default (rate-limit safe)."""
 
     style_suffix = _STYLE_SUFFIX_PATH.read_text(encoding="utf-8").strip()
 
+    # Build flat task list: (seg_idx, img_idx, prompt, out_path, size)
     tasks = []
+    for seg_idx, seg in enumerate(script.segments):
+        for img_idx, scene_prompt in enumerate(seg.image_prompts):
+            out_path = segment_sub_image_path(output_root, run_id, seg_idx, img_idx)
+            prompt = _build_prompt(scene_prompt, style_suffix)
+            tasks.append(("segment", seg_idx, img_idx, prompt, out_path, (1920, 1080)))
 
-    # Segment images (1920×1080)
-    for i, seg in enumerate(script.segments):
-        out_path = segment_image_path(output_root, run_id, i)
-        prompt = f"{seg.image_prompt}, {style_suffix}"
-        tasks.append(("segment", i, prompt, out_path, (1920, 1080)))
-
-    # Thumbnail (1280×720)
+    # Thumbnail
     thumb_path = thumbnail_raw_path(output_root, run_id)
-    thumb_prompt = f"{script.thumbnail_prompt}, {style_suffix}"
-    tasks.append(("thumbnail", -1, thumb_prompt, thumb_path, (1280, 720)))
+    thumb_prompt = _build_prompt(script.thumbnail_prompt, style_suffix)
+    tasks.append(("thumbnail", -1, 0, thumb_prompt, thumb_path, (1280, 720)))
 
-    # Run in thread pool
-    seg_paths = [None] * len(script.segments)
+    # Prepare result structure
+    seg_images: List[List[Optional[Path]]] = [
+        [None] * len(seg.image_prompts) for seg in script.segments
+    ]
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {}
-        for task_type, idx, prompt, out_path, size in tasks:
+        for task_type, seg_idx, img_idx, prompt, out_path, size in tasks:
             if out_path.exists() and not force:
-                logger.debug("image_cache_hit", type=task_type, idx=idx, path=str(out_path))
+                logger.debug("image_cache_hit", seg=seg_idx, img=img_idx)
                 if task_type == "segment":
-                    seg_paths[idx] = out_path
+                    seg_images[seg_idx][img_idx] = out_path
                 continue
 
-            future = executor.submit(
-                _generate_one, image_provider, prompt, out_path, size
-            )
-            futures[future] = (task_type, idx, out_path)
+            future = executor.submit(_generate_one, image_provider, prompt, out_path, size)
+            futures[future] = (task_type, seg_idx, img_idx, out_path)
 
         for future in as_completed(futures):
-            task_type, idx, out_path = futures[future]
+            task_type, seg_idx, img_idx, out_path = futures[future]
             try:
                 result = future.result()
                 if task_type == "segment":
-                    seg_paths[idx] = result.path
+                    seg_images[seg_idx][img_idx] = result.path
                 logger.info(
                     "image_generated",
                     type=task_type,
-                    idx=idx,
+                    seg=seg_idx,
+                    img=img_idx,
                     path=str(result.path),
                 )
             except Exception as e:
                 logger.error(
                     "image_generation_failed",
                     type=task_type,
-                    idx=idx,
+                    seg=seg_idx,
+                    img=img_idx,
                     error=str(e),
                 )
                 raise
 
-    # Fill any cache hits that weren't in futures
-    for i in range(len(script.segments)):
-        if seg_paths[i] is None:
-            seg_paths[i] = segment_image_path(output_root, run_id, i)
+    # Fill any remaining cache hits (paths that existed, not in futures)
+    for seg_idx, seg in enumerate(script.segments):
+        for img_idx in range(len(seg.image_prompts)):
+            if seg_images[seg_idx][img_idx] is None:
+                p = segment_sub_image_path(output_root, run_id, seg_idx, img_idx)
+                seg_images[seg_idx][img_idx] = p
 
-    # Handle thumbnail cache hit
-    if not thumb_path.exists():
-        thumb_path = thumbnail_raw_path(output_root, run_id)
+    # Clean: filter None, ensure each segment has at least one path
+    clean_seg_images: List[List[Path]] = []
+    total = 0
+    for seg_idx, imgs in enumerate(seg_images):
+        paths = [p for p in imgs if p is not None]
+        if not paths:
+            paths = [segment_sub_image_path(output_root, run_id, seg_idx, 0)]
+        clean_seg_images.append(paths)
+        total += len(paths)
 
     logger.info(
         "images_done",
-        segment_images=len(seg_paths),
+        segments=len(clean_seg_images),
+        total_images=total,
         thumbnail=str(thumb_path),
     )
 
     return ImagesResult(
-        segment_image_paths=[p for p in seg_paths if p is not None],
+        segment_image_paths=clean_seg_images,
         thumbnail_path=thumb_path,
-        total_images=len(seg_paths) + 1,
+        total_images=total + 1,
     )
+
+
+def _build_prompt(scene_prompt: str, style_suffix: str) -> str:
+    """Assemble final prompt: style first, then scene, then safety suffix."""
+    safe_scene = _sanitize_prompt(scene_prompt)
+    return f"{style_suffix}. Scene: {safe_scene}{_SAFETY_SUFFIX}"
+
+
+def _sanitize_prompt(prompt: str) -> str:
+    """Block NSFW terms; replace with safe fallback if found."""
+    lower = prompt.lower()
+    for term in _NSFW_BLOCKLIST:
+        if term in lower:
+            logger.warning("nsfw_prompt_blocked", term=term, prompt=prompt[:100])
+            return _SAFE_FALLBACK_PROMPT
+    return prompt
 
 
 def _generate_one(

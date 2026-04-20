@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     # Images
     image_provider: str = "replicate_flux"
     replicate_api_token: str = ""
-    flux_model: str = "black-forest-labs/flux-1.1-pro"
+    flux_model: str = "black-forest-labs/flux-schnell"
+    nsfw_check_enabled: bool = True
 
     # YouTube
     youtube_client_secrets_file: Path = Path("./secrets/client_secret.json")

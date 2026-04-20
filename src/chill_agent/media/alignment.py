@@ -233,6 +233,48 @@ def _num_to_word(n: int) -> str:
     return _NUM_WORDS.get(n, str(n))
 
 
+def get_image_switch_times(
+    segment_start: float,
+    segment_end: float,
+    num_images: int,
+    word_timestamps: List[dict],
+) -> List[float]:
+    """Return switch timestamps for num_images images within a segment.
+
+    Tries to cut at sentence boundaries; falls back to even splits.
+    Returns a list of `num_images + 1` timestamps: [start, cut1, cut2, ..., end]
+    """
+    if num_images <= 1:
+        return [segment_start, segment_end]
+
+    # Find words inside this segment
+    seg_words = [
+        w for w in word_timestamps
+        if segment_start <= w.get("start", 0) < segment_end
+    ]
+
+    # Sentence boundary = word ending with . ! ?
+    sentence_ends = [
+        w["end"]
+        for w in seg_words
+        if w.get("word", "").rstrip().endswith((".", "!", "?"))
+    ]
+
+    if len(sentence_ends) >= num_images - 1:
+        # Pick evenly-spaced sentence boundaries as cut points
+        step = max(1, len(sentence_ends) // num_images)
+        cut_points = [sentence_ends[min(i * step, len(sentence_ends) - 1)] for i in range(1, num_images)]
+    else:
+        # Even splits
+        duration = segment_end - segment_start
+        cut_points = [
+            segment_start + (duration * i / num_images)
+            for i in range(1, num_images)
+        ]
+
+    return [segment_start] + cut_points + [segment_end]
+
+
 def _generate_srt(word_timestamps: List[dict]) -> str:
     """Generate SRT caption file from word-level timestamps (phrase grouping)."""
     lines = []

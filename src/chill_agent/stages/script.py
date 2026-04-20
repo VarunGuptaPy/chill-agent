@@ -29,13 +29,18 @@ _BANNED_PATTERNS = [
     r"(?i)explicit\s+sex",
 ]
 
+_MODERATION_SYSTEM = (
+    "You are a content moderation assistant for a family-friendly YouTube channel. "
+    "Be concise. Reply with ONLY 'SAFE' or 'UNSAFE: [reason]'."
+)
+
 
 @dataclass
 class ScriptSegment:
     number: int
     label: str
     narration: str
-    image_prompt: str
+    image_prompts: List[str]  # 2-4 prompts per segment (was image_prompt: str)
 
 
 @dataclass
@@ -86,8 +91,11 @@ def generate_script(llm: LLMProvider, title: str, brief: str) -> Script:
     script.llm_input_tokens = result.input_tokens
     script.llm_output_tokens = result.output_tokens
 
-    # Content moderation
+    # Layer 1: pattern-based content check
     _check_content(script)
+
+    # Layer 2: LLM moderation (temperature=0 for deterministic output)
+    _moderate_with_llm(llm, script)
 
     logger.info(
         "script_generated",
@@ -105,7 +113,6 @@ def _parse_script(raw: str) -> Script:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
-        # Try to extract JSON from the response
         match = re.search(r"\{[\s\S]+\}", raw)
         if match:
             data = json.loads(match.group(0))
@@ -114,12 +121,26 @@ def _parse_script(raw: str) -> Script:
 
     segments = []
     for seg_data in data.get("segments", []):
+        # Handle both new array format and old single-string format gracefully
+        raw_prompts = seg_data.get("image_prompts") or seg_data.get("image_prompt")
+        if isinstance(raw_prompts, str):
+            image_prompts = [raw_prompts]
+        elif isinstance(raw_prompts, list):
+            image_prompts = [str(p) for p in raw_prompts if p]
+        else:
+            image_prompts = ["stick figure character looking surprised"]
+
+        # Ensure at least 1, cap at 4
+        if not image_prompts:
+            image_prompts = ["stick figure character looking surprised"]
+        image_prompts = image_prompts[:4]
+
         segments.append(
             ScriptSegment(
                 number=int(seg_data.get("number", 0)),
                 label=str(seg_data.get("label", "")),
                 narration=str(seg_data.get("narration", "")),
-                image_prompt=str(seg_data.get("image_prompt", "")),
+                image_prompts=image_prompts,
             )
         )
 
@@ -138,7 +159,7 @@ def _parse_script(raw: str) -> Script:
 
 
 def _check_content(script: Script) -> None:
-    """Reject scripts with disallowed content."""
+    """Reject scripts with disallowed content (fast pattern check)."""
     full_text = script.full_narration.lower()
     for pattern in _BANNED_PATTERNS:
         if re.search(pattern, full_text, re.IGNORECASE):
@@ -151,3 +172,34 @@ def _check_content(script: Script) -> None:
             f"Script too short: {script.word_count} words (minimum 1000). "
             "DeepSeek may have truncated the output."
         )
+
+
+def _moderate_with_llm(llm: LLMProvider, script: Script) -> None:
+    """LLM-based moderation — catches nuanced issues patterns miss."""
+    # Truncate to keep cost negligible (first 2000 chars is enough to judge tone)
+    excerpt = script.full_narration[:2000]
+
+    try:
+        result = llm.complete(
+            system=_MODERATION_SYSTEM,
+            user=(
+                f"Review this YouTube script excerpt for a family-friendly educational channel.\n"
+                f"Does it contain: sexual content, graphic violence, hate speech, drug promotion, "
+                f"or content inappropriate for general audiences?\n\n"
+                f"Script excerpt:\n{excerpt}"
+            ),
+            temperature=0.0,
+            json_mode=False,
+            max_tokens=50,
+        )
+        verdict = result.content.strip().upper()
+        if not verdict.startswith("SAFE"):
+            raise ValueError(
+                f"Script failed LLM moderation: {result.content.strip()[:200]}"
+            )
+        logger.debug("script_moderation_passed")
+    except ValueError:
+        raise
+    except Exception as e:
+        # Moderation API failure — log and continue rather than blocking the pipeline
+        logger.warning("script_moderation_llm_error", error=str(e))

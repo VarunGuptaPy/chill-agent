@@ -33,6 +33,11 @@ def segment_image_path(output_root: Path, run_id: str, idx: int) -> Path:
     return images_dir(output_root, run_id) / f"seg_{idx:02d}.png"
 
 
+def segment_sub_image_path(output_root: Path, run_id: str, seg_idx: int, img_idx: int) -> Path:
+    """Path for the i-th image within a segment (multi-image support)."""
+    return images_dir(output_root, run_id) / f"seg_{seg_idx:02d}_{img_idx}.png"
+
+
 def thumbnail_raw_path(output_root: Path, run_id: str) -> Path:
     return images_dir(output_root, run_id) / "thumbnail_raw.png"
 

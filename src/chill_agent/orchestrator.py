@@ -277,12 +277,11 @@ def _estimate_cost(
 ) -> float:
     llm_cost = (input_tokens / 1_000_000 * 0.28) + (output_tokens / 1_000_000 * 0.42)
     tts_cost = tts_chars / 1_000_000 * 15.0  # Fish Audio ~$15/1M chars
-    image_cost = image_count * 0.04  # Flux 1.1 Pro ~$0.04/image
+    image_cost = image_count * 0.003  # Flux schnell ~$0.003/image
     return llm_cost + tts_cost + image_cost
 
 
 def _save_script_cache(script: Script, path: Path) -> None:
-    import dataclasses
     data = {
         "title": script.title,
         "description": script.description,
@@ -293,7 +292,7 @@ def _save_script_cache(script: Script, path: Path) -> None:
                 "number": s.number,
                 "label": s.label,
                 "narration": s.narration,
-                "image_prompt": s.image_prompt,
+                "image_prompts": s.image_prompts,
             }
             for s in script.segments
         ],
@@ -305,15 +304,23 @@ def _save_script_cache(script: Script, path: Path) -> None:
 def _load_script_cache(path: Path) -> Script:
     from chill_agent.stages.script import ScriptSegment
     data = json.loads(path.read_text(encoding="utf-8"))
-    segments = [
-        ScriptSegment(
-            number=s["number"],
-            label=s["label"],
-            narration=s["narration"],
-            image_prompt=s["image_prompt"],
+    segments = []
+    for s in data.get("segments", []):
+        # Support old cache files that used singular "image_prompt"
+        if "image_prompts" in s:
+            prompts = s["image_prompts"]
+        elif "image_prompt" in s:
+            prompts = [s["image_prompt"]]
+        else:
+            prompts = []
+        segments.append(
+            ScriptSegment(
+                number=s["number"],
+                label=s["label"],
+                narration=s["narration"],
+                image_prompts=prompts,
+            )
         )
-        for s in data.get("segments", [])
-    ]
     return Script(
         title=data["title"],
         description=data.get("description", ""),
