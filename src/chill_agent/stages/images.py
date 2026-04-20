@@ -24,10 +24,8 @@ _STYLE_SUFFIX_PATH = (
 )
 
 # Safety suffix appended to every prompt sent to the model
-_SAFETY_SUFFIX = (
-    ", safe for work, family friendly, no nudity, no violence, "
-    "no blood, no weapons, cartoon style"
-)
+# NOTE: avoid NSFW keywords (nudity/blood/etc.) even when negated — Flux flags them regardless
+_SAFETY_SUFFIX = ", safe for work, family friendly, all ages, cartoon style"
 
 # Blocklist — any prompt containing these terms is replaced with a safe fallback
 _NSFW_BLOCKLIST = [
@@ -70,7 +68,7 @@ def generate_images(
         for img_idx, scene_prompt in enumerate(seg.image_prompts):
             out_path = segment_sub_image_path(output_root, run_id, seg_idx, img_idx)
             prompt = _build_prompt(scene_prompt, style_suffix)
-            tasks.append(("segment", seg_idx, img_idx, prompt, out_path, (1920, 1080)))
+            tasks.append(("segment", seg_idx, img_idx, prompt, out_path, (1280, 720)))
 
     # Thumbnail
     thumb_path = thumbnail_raw_path(output_root, run_id)
