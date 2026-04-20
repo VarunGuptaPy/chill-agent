@@ -1,0 +1,18 @@
+services:
+  chill-agent:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist DB, outputs, and secrets outside the container
+      - ./chill_agent.db:/app/chill_agent.db
+      - ./outputs:/app/outputs
+      - ./secrets:/app/secrets
+      - ./assets/music:/app/assets/music  # drop music tracks here
+    command: chill-agent run
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"

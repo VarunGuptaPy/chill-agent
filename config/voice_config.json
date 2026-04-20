@@ -1,0 +1,10 @@
+{
+  "provider": "fish_audio",
+  "voice_id": "YOUR_VOICE_ID_HERE",
+  "settings": {
+    "speed": 1.0,
+    "pitch": 0,
+    "prosody": "calm"
+  },
+  "notes": "Set voice_id once during init and never change it. Channel consistency depends on using the exact same voice forever."
+}

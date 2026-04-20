@@ -1,0 +1,52 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Secrets — NEVER commit
+secrets/
+*.json
+!config/voice_config.json
+!package.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# DB
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Outputs (can be large)
+outputs/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# WhisperX model cache
+~/.cache/torch/
+~/.cache/huggingface/
