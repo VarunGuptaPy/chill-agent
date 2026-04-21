@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 import urllib.request
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, Tuple
 
 import structlog
 
@@ -34,13 +34,13 @@ class ReplicateFluxClient:
         self,
         prompt: str,
         output_path: Path,
-        width: int = 1920,
-        height: int = 1080,
+        aspect_ratio: str = "16:9",
     ) -> ImageResult:
         import replicate
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        width, height = _clamp_size(width, height)
+        w, h = _aspect_ratio_to_dims(aspect_ratio)
+        width, height = _clamp_size(w, h)
 
         logger.info(
             "image_replicate_request",
@@ -117,6 +117,18 @@ class ReplicateFluxClient:
             height=height,
             prompt_used=prompt,
         )
+
+
+def _aspect_ratio_to_dims(aspect_ratio: str) -> Tuple[int, int]:
+    mapping: Dict[str, Tuple[int, int]] = {
+        "16:9": (1280, 720),
+        "9:16": (720, 1280),
+        "4:3": (1024, 768),
+        "3:4": (768, 1024),
+        "1:1": (1024, 1024),
+        "21:9": (1680, 720),
+    }
+    return mapping.get(aspect_ratio, (1280, 720))
 
 
 def _clamp_size(width: int, height: int) -> Tuple[int, int]:

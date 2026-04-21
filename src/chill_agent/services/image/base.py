@@ -20,6 +20,5 @@ class ImageProvider(Protocol):
         self,
         prompt: str,
         output_path: Path,
-        width: int = 1920,
-        height: int = 1080,
+        aspect_ratio: str = "16:9",
     ) -> ImageResult: ...

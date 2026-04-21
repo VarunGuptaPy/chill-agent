@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import urllib.request
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, Tuple
 
 import structlog
 
@@ -53,10 +53,14 @@ class SDXLLocalClient:
         self,
         prompt: str,
         output_path: Path,
-        width: int = 1920,
-        height: int = 1080,
+        aspect_ratio: str = "16:9",
     ) -> ImageResult:
+        _AR: Dict[str, Tuple[int, int]] = {
+            "16:9": (1280, 720), "9:16": (720, 1280),
+            "4:3": (1024, 768), "1:1": (1024, 1024),
+        }
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        width, height = _AR.get(aspect_ratio, (1280, 720))
 
         pipe = self._load_pipeline()
         logger.info("sdxl_generating", width=width, height=height)

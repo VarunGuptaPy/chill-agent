@@ -48,12 +48,7 @@ def build_tts(settings: Settings):
 def build_image_provider(settings: Settings):
     provider = settings.image_provider.lower()
 
-    if provider == "pollinations":
-        from chill_agent.services.image.pollinations import PollinationsImageClient
-
-        return PollinationsImageClient()
-
-    elif provider == "gemini":
+    if provider == "gemini":
         from chill_agent.services.image.gemini import GeminiImageClient
 
         if not settings.google_ai_api_key:
@@ -97,7 +92,7 @@ def build_image_provider(settings: Settings):
     else:
         raise ValueError(
             f"Unknown image provider: {provider}. "
-            "Use 'pollinations', 'gemini', 'replicate_flux', 'sdxl_local', or 'local_placeholder'."
+            "Use 'gemini', 'replicate_flux', 'sdxl_local', or 'local_placeholder'."
         )
 
 

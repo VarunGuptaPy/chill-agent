@@ -43,13 +43,11 @@ class GeminiImageClient:
         self,
         prompt: str,
         output_path: Path,
-        width: int = 1920,
-        height: int = 1080,
+        aspect_ratio: str = "16:9",
         retries: int = 3,
     ) -> ImageResult:
         from google.genai import types
 
-        aspect_ratio = _dims_to_aspect_ratio(width, height)
         client = self._get_client()
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -76,17 +74,19 @@ class GeminiImageClient:
                         ):
                             output_path.write_bytes(part.inline_data.data)
 
+                            width, height = _aspect_ratio_to_dims(aspect_ratio)
                             logger.info(
                                 "image_gemini_generated",
                                 prompt=prompt[:80],
                                 path=str(output_path),
-                                width=width,
-                                height=height,
+                                aspect_ratio=aspect_ratio,
                                 attempt=attempt + 1,
                             )
 
+                            # Rate limit: sleep after successful generation
                             if self.rate_limit_seconds > 0:
                                 time.sleep(self.rate_limit_seconds)
+
                             return ImageResult(
                                 path=output_path,
                                 width=width,
@@ -127,17 +127,14 @@ class GeminiImageClient:
         ) from last_exc
 
 
-def _dims_to_aspect_ratio(width: int, height: int) -> str:
-    """Infer the closest Gemini aspect_ratio string from pixel dimensions."""
-    ratio = width / height if height else 1
-    if abs(ratio - 16 / 9) < 0.15:
-        return "16:9"
-    if abs(ratio - 9 / 16) < 0.15:
-        return "9:16"
-    if abs(ratio - 4 / 3) < 0.1:
-        return "4:3"
-    if abs(ratio - 3 / 4) < 0.1:
-        return "3:4"
-    if abs(ratio - 1) < 0.05:
-        return "1:1"
-    return "16:9"  # safe default
+def _aspect_ratio_to_dims(aspect_ratio: str) -> tuple[int, int]:
+    """Return (width, height) for a given aspect ratio string."""
+    mapping = {
+        "16:9": (1280, 720),
+        "9:16": (720, 1280),
+        "4:3": (1024, 768),
+        "3:4": (768, 1024),
+        "1:1": (1024, 1024),
+        "21:9": (1680, 720),
+    }
+    return mapping.get(aspect_ratio, (1280, 720))
