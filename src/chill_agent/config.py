@@ -30,7 +30,15 @@ class Settings(BaseSettings):
     tts_voice_id: str = ""
 
     # Images
-    image_provider: str = "replicate_flux"
+    image_provider: str = "pollinations"
+    image_width: int = 1920
+    image_height: int = 1080
+    # Pollinations (default — free, no key required)
+    # Google Gemini (fallback)
+    google_ai_api_key: str = ""
+    gemini_image_model: str = "gemini-2.5-flash-preview-image-generation"
+    image_rate_limit_seconds: float = 6.0  # Gemini free tier: ~10 RPM
+    # Replicate / Flux (fallback)
     replicate_api_token: str = ""
     flux_model: str = "black-forest-labs/flux-schnell"
     nsfw_check_enabled: bool = True

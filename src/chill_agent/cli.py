@@ -57,6 +57,7 @@ def init():
     checks = [
         ("DEEPSEEK_API_KEY", settings.deepseek_api_key, True),
         ("FISH_AUDIO_API_KEY / ELEVENLABS_API_KEY", settings.fish_audio_api_key or settings.elevenlabs_api_key, True),
+        ("GOOGLE_AI_API_KEY", settings.google_ai_api_key, settings.image_provider == "gemini"),
         ("REPLICATE_API_TOKEN", settings.replicate_api_token, settings.image_provider == "replicate_flux"),
         ("TTS_VOICE_ID", settings.tts_voice_id, False),
         ("YOUTUBE_CLIENT_SECRETS_FILE", settings.youtube_client_secrets_file.exists(), False),
@@ -141,16 +142,34 @@ def run_once(
 
 @app.command(name="dry-run")
 def dry_run(
-    run_id: Optional[str] = typer.Option(None, "--run-id", help="Resume a previous dry-run from where it left off"),
-    mock_images: bool = typer.Option(False, "--mock-images", help="Use local placeholder images instead of Replicate (free, for testing)"),
+    run_id: Optional[str] = typer.Option(None, "--run-id", help="Resume a previous dry-run by run ID"),
+    stage: Optional[str] = typer.Option(
+        None, "--stage",
+        help="Stage to resume from (ideation/script/tts/images/alignment/assembly/thumbnail/metadata). "
+             "Auto-detected from cached files when --run-id is given.",
+    ),
+    mock_images: bool = typer.Option(False, "--mock-images", help="Use local placeholder images (free, for testing)"),
 ):
-    """Full pipeline without uploading to YouTube. Safe for testing."""
+    """Full pipeline without uploading to YouTube. Safe for testing.
+
+    Resume example:  chill-agent dry-run --run-id <id> --stage images
+    Auto-detect:     chill-agent dry-run --run-id <id>
+    """
     settings, repo, llm, tts, image_provider, _ = _get_deps()
 
     if mock_images:
         from chill_agent.services.image.local_placeholder import LocalPlaceholderClient
         image_provider = LocalPlaceholderClient()
         console.print("[yellow]Using local placeholder images (--mock-images)[/yellow]")
+
+    effective_stage: Optional[str] = stage
+
+    if run_id and not stage:
+        from chill_agent.orchestrator import detect_start_stage
+        effective_stage = detect_start_stage(settings.output_dir, run_id)
+        console.print(f"[cyan]Auto-detected resume point: [bold]{effective_stage}[/bold][/cyan]")
+    elif run_id and stage:
+        console.print(f"[cyan]Resuming from stage: [bold]{stage}[/bold][/cyan]")
 
     from chill_agent.orchestrator import make_one_video
 
@@ -163,6 +182,7 @@ def dry_run(
         youtube=None,
         dry_run=True,
         resume_run_id=run_id,
+        start_from_stage=effective_stage,
     )
     console.print(f"\n[bold green]Dry run complete![/bold green]")
     console.print(f"Title: {result.title}")
@@ -173,9 +193,21 @@ def dry_run(
 @app.command()
 def resume(
     run_id: str = typer.Argument(..., help="Run ID to resume (from DB)"),
+    stage: Optional[str] = typer.Option(
+        None, "--stage",
+        help="Stage to resume from. Auto-detected from cached files if not specified.",
+    ),
 ):
     """Resume a failed pipeline run from where it left off."""
     settings, repo, llm, tts, image_provider, _ = _get_deps()
+
+    effective_stage: Optional[str] = stage
+    if not stage:
+        from chill_agent.orchestrator import detect_start_stage
+        effective_stage = detect_start_stage(settings.output_dir, run_id)
+        console.print(f"[cyan]Auto-detected resume point: [bold]{effective_stage}[/bold][/cyan]")
+    else:
+        console.print(f"[cyan]Resuming from stage: [bold]{stage}[/bold][/cyan]")
 
     from chill_agent.orchestrator import make_one_video
     from chill_agent.providers import build_youtube
@@ -190,6 +222,7 @@ def resume(
         youtube=youtube,
         dry_run=False,
         resume_run_id=run_id,
+        start_from_stage=effective_stage,
     )
     console.print(f"[green]Resumed and completed: {result.title}[/green]")
 

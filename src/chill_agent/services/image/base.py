@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, Tuple
+from typing import Protocol
 
 
 @dataclass
@@ -20,5 +20,6 @@ class ImageProvider(Protocol):
         self,
         prompt: str,
         output_path: Path,
-        size: Tuple[int, int] = (1920, 1080),
+        width: int = 1920,
+        height: int = 1080,
     ) -> ImageResult: ...

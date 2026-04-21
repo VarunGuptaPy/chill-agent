@@ -34,12 +34,13 @@ class ReplicateFluxClient:
         self,
         prompt: str,
         output_path: Path,
-        size: Tuple[int, int] = (1920, 1080),
+        width: int = 1920,
+        height: int = 1080,
     ) -> ImageResult:
         import replicate
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        width, height = _clamp_size(size[0], size[1])
+        width, height = _clamp_size(width, height)
 
         logger.info(
             "image_replicate_request",

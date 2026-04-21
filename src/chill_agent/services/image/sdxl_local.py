@@ -53,10 +53,10 @@ class SDXLLocalClient:
         self,
         prompt: str,
         output_path: Path,
-        size: Tuple[int, int] = (1920, 1080),
+        width: int = 1920,
+        height: int = 1080,
     ) -> ImageResult:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        width, height = size
 
         pipe = self._load_pipeline()
         logger.info("sdxl_generating", width=width, height=height)

@@ -36,12 +36,12 @@ class LocalPlaceholderClient:
         self,
         prompt: str,
         output_path: Path,
-        size: Tuple[int, int] = (1920, 1080),
+        width: int = 1920,
+        height: int = 1080,
     ) -> ImageResult:
         from PIL import Image, ImageDraw, ImageFont
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        width, height = size
 
         # Pick a deterministic color based on prompt hash
         color_idx = int(hashlib.md5(prompt.encode()).hexdigest(), 16) % len(_COLORS)

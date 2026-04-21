@@ -70,6 +70,10 @@ def thumbnail_b_path(output_root: Path, run_id: str) -> Path:
     return run_dir(output_root, run_id) / "thumbnail_b.jpg"
 
 
+def ideation_cache_path(output_root: Path, run_id: str) -> Path:
+    return run_dir(output_root, run_id) / "ideation.json"
+
+
 def script_cache_path(output_root: Path, run_id: str) -> Path:
     return run_dir(output_root, run_id) / "script.json"
 
