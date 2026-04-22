@@ -234,12 +234,13 @@ def make_one_video(
 
         # ── Stage 4: Images ───────────────────────────────────────────────────
         repo.update_run_stage(run_id, "images")
+        _skip_images = start_from_stage and _before("images", start_from_stage)
         images_result = generate_images(
             image_provider=image_provider,
             script=script,
             run_id=run_id,
             output_root=output_root,
-            force=force,
+            force=False if _skip_images else force,
         )
         total_images += images_result.total_images
 
@@ -264,12 +265,14 @@ def make_one_video(
         # ── Stage 6: Assembly ─────────────────────────────────────────────────
         repo.update_run_stage(run_id, "assembly")
         music_dir = Path(__file__).parent.parent.parent / "assets" / "music"
+        segment_numbers = [seg.number for seg in script.segments]
         final_video = assemble_video(
             run_id=run_id,
             output_root=output_root,
             tts_result=tts_result,
             segment_image_paths=images_result.segment_image_paths,
             alignment=alignment,
+            segment_numbers=segment_numbers,
             music_dir=music_dir if music_dir.exists() else None,
             enable_captions=settings.enable_captions,
             force=force,

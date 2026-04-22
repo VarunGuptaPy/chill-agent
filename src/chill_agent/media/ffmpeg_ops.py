@@ -111,7 +111,12 @@ def mux_video_audio(
     audio_path: Path,
     output_path: Path,
 ) -> Path:
-    """Mux video with narration audio. Re-encodes audio to AAC."""
+    """Mux video with narration audio. Audio is authoritative for duration.
+
+    We do NOT use -shortest so the audio is never truncated when the video is
+    a few seconds shorter (inter-segment silences are in the WAV but not in
+    the video clips). The last video frame will freeze briefly, which is fine.
+    """
     _run_ffmpeg(
         [
             "-i", str(video_path),
@@ -119,7 +124,6 @@ def mux_video_audio(
             "-c:v", "copy",
             "-c:a", "aac",
             "-b:a", "192k",
-            "-shortest",
             "-map", "0:v:0",
             "-map", "1:a:0",
             str(output_path),
@@ -184,6 +188,8 @@ def burn_captions(
         [
             "-i", str(video_path),
             "-vf", subs_filter,
+            "-map", "0:v:0",
+            "-map", "0:a:0",
             "-c:v", "libx264",
             "-profile:v", "high",
             "-preset", "fast",

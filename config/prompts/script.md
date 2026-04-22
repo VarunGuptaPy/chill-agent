@@ -22,21 +22,28 @@ Tone:
 
 Total length: 1,500–2,500 words.
 
-For each segment, provide 2-4 image_prompts (array of strings), not just one.
-Each prompt should show a DIFFERENT moment or angle of the topic being discussed.
-Think of it like comic panels — each image captures a different beat of the narration.
+For each segment, provide 6-8 image_prompts (array of strings) — one for each distinct visual beat of the narration.
+Each prompt MUST show a completely different scene, moment, or angle. Never describe the same scene twice.
+Think of it like a comic book sequence — 6-8 panels that each advance the story visually.
 
 Rules for image_prompts:
-- First image: introduce the concept (character encounters the thing)
-- Middle image(s): the funny/weird/creepy detail being explained
-- Last image: the punchline or reaction shot
+- Panel 1: introduce the concept (character first encounters the thing)
+- Panels 2-3: build context — show what the thing actually does or looks like
+- Panels 4-5: the weird/funny/creepy detail being explained, with escalating absurdity
+- Panel 6-7: consequences or a real-world example playing out
+- Last panel: the punchline or reaction shot
 - Keep each prompt under 30 words
+- Every prompt must be visually distinct — different setting, action, or character pose from all others in the same segment
 - Describe scenes only — DO NOT describe art style (the style is applied separately)
 - Examples of good prompts:
   - "stick figure sitting on couch looking bored, TV remote on coffee table"
   - "stick figure in bed with thought bubbles showing weird dreams"
   - "stick figure pointing at brain diagram on whiteboard"
   - "stick figure with wide shocked eyes and sweat drops flying off head"
+  - "stick figure at doctor office, doctor pointing at x-ray on wall"
+  - "close-up of stick figure brain glowing and sparking with electricity"
+  - "stick figure standing outside looking up at night sky, stars above"
+  - "stick figure holding trophy but crying at same time"
 
 For the thumbnail_prompt, describe a group scene:
 "group of 4-5 stick figure characters with round white heads, each doing something different related to [topic], exaggerated expressions, chaotic fun composition"
@@ -53,9 +60,13 @@ Return a JSON object with this exact structure:
       "label": "Button Phobia",
       "narration": "Number seven: Button Phobia...\n\n[full 250-450 word item text]",
       "image_prompts": [
-        "stick figure looking disgusted at pile of buttons on table",
+        "stick figure first noticing pile of buttons on table, confused expression",
         "close-up of stick figure face with wide eyes and sweat drops",
-        "stick figure running away from a shirt with buttons"
+        "stick figure backing away slowly from a shirt with many buttons",
+        "stick figure calling a friend on phone looking panicked",
+        "stick figure hiding under desk while shirt floats menacingly above",
+        "scientist stick figure at chalkboard with equation about button phobia",
+        "stick figure finally snipping all buttons off shirt with scissors, relieved"
       ]
     }
   ],

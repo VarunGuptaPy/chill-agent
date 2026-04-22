@@ -8,7 +8,7 @@ from typing import List, Optional
 
 import structlog
 
-from chill_agent.media.alignment import AlignmentResult, get_image_switch_times
+from chill_agent.media.alignment import AlignmentResult
 from chill_agent.media.ffmpeg_ops import (
     build_ken_burns_clip,
     burn_captions,
@@ -28,9 +28,10 @@ logger = structlog.get_logger()
 
 _FONT_PATH = Path(__file__).parent.parent.parent.parent / "assets" / "fonts" / "Anton-Regular.ttf"
 
-# Per-image display time constraints
-_MIN_IMAGE_SECS = 3.0
-_MAX_IMAGE_SECS = 8.0
+# Ken Burns clip duration targets (seconds per individual clip)
+_TARGET_CLIP_SECS = 10.0
+_MIN_CLIP_SECS = 4.0
+_MAX_CLIP_SECS = 20.0
 
 
 def assemble_video(
@@ -39,6 +40,7 @@ def assemble_video(
     tts_result: TTSResult,
     segment_image_paths: List[List[Path]],  # outer=segment, inner=images
     alignment: AlignmentResult,
+    segment_numbers: Optional[List[int]] = None,  # countdown numbers [7,6,...,1]
     music_dir: Optional[Path] = None,
     enable_captions: bool = True,
     force: bool = False,
@@ -50,25 +52,35 @@ def assemble_video(
         logger.info("assembly_cache_hit", path=str(final_path))
         return final_path
 
-    # Step 1: Build per-image Ken Burns clips (multiple per segment)
-    all_clips = _build_all_clips(
-        run_id=run_id,
-        output_root=output_root,
-        segment_image_paths=segment_image_paths,
-        alignment=alignment,
-        tts_result=tts_result,
-        force=force,
-    )
-
-    # Step 2: Concatenate all clips into one raw video
     raw_video = video_dir(output_root, run_id) / "concat_raw.mp4"
-    logger.info("assembly_concat", clips=len(all_clips))
-    concat_video_clips(all_clips, raw_video)
-
-    # Step 3: Mux with narration audio
     with_voice = video_dir(output_root, run_id) / "with_voice.mp4"
-    logger.info("assembly_mux_voice")
-    mux_video_audio(raw_video, tts_result.full_audio_path, with_voice)
+
+    # Step 1+2: Build Ken Burns clips and concatenate.
+    # Skipped when concat_raw.mp4 already exists (and force is not set) so that
+    # re-running only the mux step is fast.
+    if not raw_video.exists() or force:
+        effective_seg_nums = segment_numbers or list(range(1, len(segment_image_paths) + 1))
+        all_clips = _build_all_clips(
+            run_id=run_id,
+            output_root=output_root,
+            segment_image_paths=segment_image_paths,
+            alignment=alignment,
+            tts_result=tts_result,
+            segment_numbers=effective_seg_nums,
+            force=force,
+        )
+        logger.info("assembly_concat", clips=len(all_clips))
+        concat_video_clips(all_clips, raw_video)
+    else:
+        logger.info("assembly_concat_cache_hit", path=str(raw_video))
+
+    # Step 3: Mux with narration audio.
+    # Skipped when with_voice.mp4 already exists (and force is not set).
+    if not with_voice.exists() or force:
+        logger.info("assembly_mux_voice")
+        mux_video_audio(raw_video, tts_result.full_audio_path, with_voice)
+    else:
+        logger.info("assembly_mux_cache_hit", path=str(with_voice))
 
     current = with_voice
 
@@ -101,31 +113,46 @@ def _build_all_clips(
     segment_image_paths: List[List[Path]],
     alignment: AlignmentResult,
     tts_result: TTSResult,
+    segment_numbers: List[int],
     force: bool,
 ) -> List[Path]:
-    """Build one Ken Burns clip per image across all segments."""
+    """Build Ken Burns clips for all segments, cycling through images."""
 
     all_clips: List[Path] = []
     global_clip_idx = 0
 
-    for seg_idx, img_paths in enumerate(segment_image_paths):
-        seg_duration = _get_segment_duration(seg_idx, alignment, tts_result)
+    for seg_pos, (img_paths, seg_num) in enumerate(zip(segment_image_paths, segment_numbers)):
+        seg_duration = _get_segment_duration(seg_num, seg_pos, alignment, tts_result)
         if seg_duration < 1.0:
             seg_duration = 5.0
 
-        # Get image switch timestamps (natural cut points or even splits)
-        switch_times = get_image_switch_times(
-            segment_start=_get_segment_start(seg_idx, alignment),
-            segment_end=_get_segment_start(seg_idx, alignment) + seg_duration,
-            num_images=len(img_paths),
-            word_timestamps=alignment.word_timestamps,
+        n_unique = len(img_paths)
+
+        # Prefer showing each unique image exactly once at a comfortable hold duration.
+        # Only cycle images if the segment is so long that each image would exceed MAX_CLIP_SECS.
+        base_clip_dur = seg_duration / n_unique
+        if base_clip_dur <= _MAX_CLIP_SECS:
+            # All unique images fit without repeating — ideal path
+            n_clips = n_unique
+            clip_duration = max(_MIN_CLIP_SECS, base_clip_dur)
+        else:
+            # Segment is very long; need more clips than unique images, so some will cycle
+            n_clips = max(n_unique, round(seg_duration / _TARGET_CLIP_SECS))
+            clip_duration = seg_duration / n_clips
+            clip_duration = max(_MIN_CLIP_SECS, min(_MAX_CLIP_SECS, clip_duration))
+
+        logger.info(
+            "assembly_segment_clips",
+            seg_num=seg_num,
+            seg_duration=round(seg_duration, 2),
+            n_unique_images=n_unique,
+            n_clips=n_clips,
+            clip_duration=round(clip_duration, 2),
+            cycling=n_clips > n_unique,
         )
 
-        # Cap number of images if segment is too short
-        max_imgs = max(1, int(seg_duration / _MIN_IMAGE_SECS))
-        active_imgs = img_paths[:max_imgs]
-
-        for img_idx, img_path in enumerate(active_imgs):
+        for clip_i in range(n_clips):
+            img_path = img_paths[clip_i % n_unique]
             clip_path = video_dir(output_root, run_id) / f"clip_{global_clip_idx:03d}.mp4"
             global_clip_idx += 1
 
@@ -134,27 +161,10 @@ def _build_all_clips(
                 all_clips.append(clip_path)
                 continue
 
-            # Duration for this specific image
-            if img_idx < len(switch_times) - 1:
-                img_duration = switch_times[img_idx + 1] - switch_times[img_idx]
-            else:
-                img_duration = seg_duration / len(active_imgs)
-
-            # Clamp to reasonable range
-            img_duration = max(_MIN_IMAGE_SECS, min(_MAX_IMAGE_SECS, img_duration))
-
-            logger.info(
-                "assembly_build_clip",
-                seg=seg_idx,
-                img=img_idx,
-                duration=round(img_duration, 2),
-                mode_idx=global_clip_idx,
-            )
-
             build_ken_burns_clip(
                 image_path=img_path,
                 output_path=clip_path,
-                duration=img_duration,
+                duration=clip_duration,
                 mode_idx=global_clip_idx,
             )
             all_clips.append(clip_path)
@@ -163,24 +173,21 @@ def _build_all_clips(
 
 
 def _get_segment_duration(
-    seg_idx: int,
+    seg_num: int,
+    seg_pos: int,
     alignment: AlignmentResult,
     tts_result: TTSResult,
 ) -> float:
-    # 1-indexed segment_idx in alignment
+    """Get segment duration. Prefers alignment if valid, falls back to TTS duration."""
     for seg in alignment.segments:
-        if seg.segment_idx == seg_idx + 1:
-            return seg.end_sec - seg.start_sec
+        if seg.segment_idx == seg_num:
+            dur = seg.end_sec - seg.start_sec
+            if dur >= 1.0:
+                return dur
 
-    if seg_idx < len(tts_result.per_segment_durations):
-        return tts_result.per_segment_durations[seg_idx]
+    # Alignment timestamps are invalid/zeroed — use actual TTS segment duration
+    if seg_pos < len(tts_result.per_segment_durations):
+        return tts_result.per_segment_durations[seg_pos]
 
     n = max(len(tts_result.per_segment_durations), 1)
     return tts_result.total_duration_seconds / n
-
-
-def _get_segment_start(seg_idx: int, alignment: AlignmentResult) -> float:
-    for seg in alignment.segments:
-        if seg.segment_idx == seg_idx + 1:
-            return seg.start_sec
-    return 0.0

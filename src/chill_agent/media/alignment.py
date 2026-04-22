@@ -132,13 +132,16 @@ def _align_approximate(
 
     total_chars = max(len(full_text), 1)
 
-    # Find each segment's start character offset by searching for "Number X:" patterns
+    # Find each segment's start character offset by searching for "Number X:" patterns.
+    # Narration uses word numbers ("Number seven:"), not digits ("Number 7:").
     import re
 
     segment_offsets = []
     for idx, label_text in segment_labels:
-        # Search for "Number N:" patterns
-        match = re.search(rf"Number\s+{idx}\s*:", full_text, re.IGNORECASE)
+        word_num = _num_to_word(idx)
+        # Match both digit form ("Number 7:") and word form ("Number seven:")
+        pattern = rf"Number\s+(?:{idx}|{word_num})\s*:"
+        match = re.search(pattern, full_text, re.IGNORECASE)
         if match:
             segment_offsets.append((idx, match.start()))
         else:

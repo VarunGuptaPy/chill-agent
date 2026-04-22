@@ -149,11 +149,13 @@ def dry_run(
              "Auto-detected from cached files when --run-id is given.",
     ),
     mock_images: bool = typer.Option(False, "--mock-images", help="Use local placeholder images (free, for testing)"),
+    force: bool = typer.Option(False, "--force", help="Force-rerun the specified stage(s) even if cached artifacts exist"),
 ):
     """Full pipeline without uploading to YouTube. Safe for testing.
 
-    Resume example:  chill-agent dry-run --run-id <id> --stage images
-    Auto-detect:     chill-agent dry-run --run-id <id>
+    Resume example:    chill-agent dry-run --run-id <id> --stage images
+    Auto-detect:       chill-agent dry-run --run-id <id>
+    Force re-assemble: chill-agent dry-run --run-id <id> --stage alignment --force
     """
     settings, repo, llm, tts, image_provider, _ = _get_deps()
 
@@ -171,6 +173,9 @@ def dry_run(
     elif run_id and stage:
         console.print(f"[cyan]Resuming from stage: [bold]{stage}[/bold][/cyan]")
 
+    if force:
+        console.print("[yellow]--force: cached artifacts for this stage will be regenerated[/yellow]")
+
     from chill_agent.orchestrator import make_one_video
 
     result = make_one_video(
@@ -181,6 +186,7 @@ def dry_run(
         image_provider=image_provider,
         youtube=None,
         dry_run=True,
+        force=force,
         resume_run_id=run_id,
         start_from_stage=effective_stage,
     )
