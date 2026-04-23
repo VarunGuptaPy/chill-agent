@@ -1,4 +1,4 @@
-"""Stage 4: Image generation — 6-8 images per segment + thumbnail, with NSFW safety."""
+"""Stage 4: Image generation — content-driven images per segment + thumbnail, with NSFW safety."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def generate_images(
     force: bool = False,
     max_workers: int = 1,
 ) -> ImagesResult:
-    """Generate 6-8 images per segment + thumbnail. Sequential by default (rate-limit safe)."""
+    """Generate content-driven images per segment + thumbnail. Sequential by default (rate-limit safe)."""
 
     style_suffix = _STYLE_SUFFIX_PATH.read_text(encoding="utf-8").strip()
 

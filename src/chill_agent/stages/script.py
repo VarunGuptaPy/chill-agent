@@ -130,10 +130,10 @@ def _parse_script(raw: str) -> Script:
         else:
             image_prompts = ["stick figure character looking surprised"]
 
-        # Ensure at least 1, cap at 8
+        # Ensure at least 1; cap at 15 only as a safeguard against runaway output
         if not image_prompts:
             image_prompts = ["stick figure character looking surprised"]
-        image_prompts = image_prompts[:8]
+        image_prompts = image_prompts[:15]
 
         segments.append(
             ScriptSegment(

@@ -22,31 +22,37 @@ Tone:
 
 Total length: 1,500–2,500 words.
 
-For each segment, provide 6-8 image_prompts (array of strings) — one for each distinct visual beat of the narration.
-Each prompt MUST show a completely different scene, moment, or angle. Never describe the same scene twice.
-Think of it like a comic book sequence — 6-8 panels that each advance the story visually.
+---
 
-Rules for image_prompts:
-- Panel 1: introduce the concept (character first encounters the thing)
-- Panels 2-3: build context — show what the thing actually does or looks like
-- Panels 4-5: the weird/funny/creepy detail being explained, with escalating absurdity
-- Panel 6-7: consequences or a real-world example playing out
-- Last panel: the punchline or reaction shot
+IMAGE PROMPTS — read this carefully.
+
+For each segment, write as many image_prompts as the narration actually needs to land its explanation and jokes visually. There is no fixed number. A simple two-beat concept might need 4 images. A multi-step process with a big punchline might need 12. Use your judgment — match the images to the story being told.
+
+Think of it exactly like a YouTube video with b-roll cuts: every time the narration shifts to a new idea, example, step, or joke, that's a new image. The viewer should never be staring at the same image while the narration has moved on to something completely different.
+
+Concrete mental model: read the narration back to yourself and ask "what would a video editor cut to here?" — that's your image.
+
+Rules for each image prompt:
+- Every image MUST be visually distinct — different scene, setting, action, or character pose from every other image in the same segment. Never repeat the same visual.
+- Match the image to the beat of the narration happening at that moment: if the script is explaining a mechanism, show it happening; if it's delivering a punchline, show the reaction; if it's giving an analogy, show the analogy.
 - Keep each prompt under 30 words
-- Every prompt must be visually distinct — different setting, action, or character pose from all others in the same segment
-- Describe scenes only — DO NOT describe art style (the style is applied separately)
-- Examples of good prompts:
+- Describe the scene only — DO NOT mention art style (the style is applied separately)
+- Good prompt examples:
   - "stick figure sitting on couch looking bored, TV remote on coffee table"
   - "stick figure in bed with thought bubbles showing weird dreams"
   - "stick figure pointing at brain diagram on whiteboard"
   - "stick figure with wide shocked eyes and sweat drops flying off head"
   - "stick figure at doctor office, doctor pointing at x-ray on wall"
   - "close-up of stick figure brain glowing and sparking with electricity"
-  - "stick figure standing outside looking up at night sky, stars above"
+  - "stick figure running from giant shadow shaped like a deadline"
   - "stick figure holding trophy but crying at same time"
+  - "two stick figures arguing, one has lightbulb above head, other has question mark"
+  - "stick figure asleep at desk, tiny ZZZ floating, coffee cup untouched"
 
 For the thumbnail_prompt, describe a group scene:
 "group of 4-5 stick figure characters with round white heads, each doing something different related to [topic], exaggerated expressions, chaotic fun composition"
+
+---
 
 Return a JSON object with this exact structure:
 {
@@ -60,13 +66,14 @@ Return a JSON object with this exact structure:
       "label": "Button Phobia",
       "narration": "Number seven: Button Phobia...\n\n[full 250-450 word item text]",
       "image_prompts": [
-        "stick figure first noticing pile of buttons on table, confused expression",
+        "stick figure noticing a pile of buttons on a table, confused expression",
         "close-up of stick figure face with wide eyes and sweat drops",
         "stick figure backing away slowly from a shirt with many buttons",
-        "stick figure calling a friend on phone looking panicked",
-        "stick figure hiding under desk while shirt floats menacingly above",
-        "scientist stick figure at chalkboard with equation about button phobia",
-        "stick figure finally snipping all buttons off shirt with scissors, relieved"
+        "doctor stick figure showing a diagram of the nervous system to panicked patient",
+        "stick figure calling a friend on phone, clearly distressed",
+        "stick figure hiding under a desk while a shirt with buttons floats menacingly above",
+        "scientist stick figure at chalkboard writing the words KOUMPOUNOPHOBIA in big letters",
+        "stick figure outside in sunlight, relaxed, wearing a zip-up hoodie and giving thumbs up"
       ]
     }
   ],
