@@ -178,16 +178,23 @@ def _get_segment_duration(
     alignment: AlignmentResult,
     tts_result: TTSResult,
 ) -> float:
-    """Get segment duration. Prefers alignment if valid, falls back to TTS duration."""
+    """Get segment duration from TTS (ground truth — each segment synthesized individually).
+
+    Alignment segment boundaries are unreliable: number words like "six" or "one"
+    can appear anywhere in narration text, causing _find_segment_boundaries to
+    match the wrong position. TTS per_segment_durations are always exact.
+    """
+    if seg_pos < len(tts_result.per_segment_durations):
+        dur = tts_result.per_segment_durations[seg_pos]
+        if dur >= 1.0:
+            return dur
+
+    # Fallback: alignment (only if TTS data is genuinely missing)
     for seg in alignment.segments:
         if seg.segment_idx == seg_num:
             dur = seg.end_sec - seg.start_sec
             if dur >= 1.0:
                 return dur
-
-    # Alignment timestamps are invalid/zeroed — use actual TTS segment duration
-    if seg_pos < len(tts_result.per_segment_durations):
-        return tts_result.per_segment_durations[seg_pos]
 
     n = max(len(tts_result.per_segment_durations), 1)
     return tts_result.total_duration_seconds / n

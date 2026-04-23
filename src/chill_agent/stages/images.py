@@ -10,6 +10,7 @@ from typing import List, Optional
 import structlog
 
 from chill_agent.services.image.base import ImageProvider, ImageResult
+from chill_agent.services.llm.base import LLMProvider
 from chill_agent.stages.script import Script
 from chill_agent.utils.paths import (
     images_dir,
@@ -55,6 +56,7 @@ def generate_images(
     script: Script,
     run_id: str,
     output_root: Path,
+    llm: Optional[LLMProvider] = None,
     force: bool = False,
     max_workers: int = 1,
 ) -> ImagesResult:
@@ -67,12 +69,12 @@ def generate_images(
     for seg_idx, seg in enumerate(script.segments):
         for img_idx, scene_prompt in enumerate(seg.image_prompts):
             out_path = segment_sub_image_path(output_root, run_id, seg_idx, img_idx)
-            prompt = _build_prompt(scene_prompt, style_suffix)
+            prompt = _build_prompt(scene_prompt, style_suffix, llm)
             tasks.append(("segment", seg_idx, img_idx, prompt, out_path, "16:9"))
 
     # Thumbnail
     thumb_path = thumbnail_raw_path(output_root, run_id)
-    thumb_prompt = _build_prompt(script.thumbnail_prompt, style_suffix)
+    thumb_prompt = _build_prompt(script.thumbnail_prompt, style_suffix, llm)
     tasks.append(("thumbnail", -1, 0, thumb_prompt, thumb_path, "16:9"))
 
     # Prepare result structure
@@ -146,18 +148,40 @@ def generate_images(
     )
 
 
-def _build_prompt(scene_prompt: str, style_suffix: str) -> str:
+def _build_prompt(scene_prompt: str, style_suffix: str, llm: Optional[LLMProvider] = None) -> str:
     """Assemble final prompt: style first, then scene, then safety suffix."""
-    safe_scene = _sanitize_prompt(scene_prompt)
+    safe_scene = _sanitize_prompt(scene_prompt, llm)
     return f"{style_suffix}. Scene: {safe_scene}{_SAFETY_SUFFIX}"
 
 
-def _sanitize_prompt(prompt: str) -> str:
-    """Block NSFW terms; replace with safe fallback if found."""
+def _sanitize_prompt(prompt: str, llm: Optional[LLMProvider] = None) -> str:
+    """Block NSFW terms. If LLM is available, regenerate a safe version in real-time."""
     lower = prompt.lower()
     for term in _NSFW_BLOCKLIST:
         if term in lower:
             logger.warning("nsfw_prompt_blocked", term=term, prompt=prompt[:100])
+            if llm is not None:
+                try:
+                    result = llm.complete(
+                        system=(
+                            "You write image prompts for a family-friendly educational YouTube channel. "
+                            "Respond with ONLY the rewritten prompt — no explanation, no quotes."
+                        ),
+                        user=(
+                            f"Rewrite this image prompt to be completely safe for work. "
+                            f"Remove or replace any sensitive content while preserving the core visual concept "
+                            f"(the scene, the characters, the action). Keep it under 30 words.\n\n"
+                            f"Original prompt: {prompt}"
+                        ),
+                        temperature=0.7,
+                        json_mode=False,
+                        max_tokens=80,
+                    )
+                    rewritten = result.content.strip()
+                    logger.info("nsfw_prompt_rewritten", original=prompt[:80], rewritten=rewritten[:80])
+                    return rewritten
+                except Exception as e:
+                    logger.warning("nsfw_prompt_rewrite_failed", error=str(e))
             return _SAFE_FALLBACK_PROMPT
     return prompt
 

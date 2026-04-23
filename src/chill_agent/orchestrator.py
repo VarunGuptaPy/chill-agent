@@ -240,6 +240,7 @@ def make_one_video(
             script=script,
             run_id=run_id,
             output_root=output_root,
+            llm=llm,
             force=False if _skip_images else force,
         )
         total_images += images_result.total_images
@@ -290,7 +291,7 @@ def make_one_video(
 
         # ── Stage 8: Metadata ─────────────────────────────────────────────────
         repo.update_run_stage(run_id, "metadata")
-        metadata = finalize_metadata(script=script, alignment=alignment)
+        metadata = finalize_metadata(script=script, alignment=alignment, tts_result=tts_result)
 
         # Save video record to DB
         video_record = repo.add_video(

@@ -9,6 +9,7 @@ import structlog
 
 from chill_agent.media.alignment import AlignmentResult
 from chill_agent.stages.script import Script
+from chill_agent.stages.tts import TTSResult
 
 logger = structlog.get_logger()
 
@@ -33,10 +34,10 @@ class VideoMetadata:
     contains_synthetic_media: bool = True  # ALWAYS TRUE
 
 
-def finalize_metadata(script: Script, alignment: AlignmentResult) -> VideoMetadata:
+def finalize_metadata(script: Script, alignment: AlignmentResult, tts_result: TTSResult) -> VideoMetadata:
     """Build final metadata: insert chapter timestamps, add boilerplate."""
 
-    chapters = _build_chapters(alignment)
+    chapters = _build_chapters(script, tts_result)
     description = script.description.replace("{CHAPTERS}", chapters)
     description = description + _CHANNEL_BOILERPLATE
 
@@ -65,16 +66,28 @@ def finalize_metadata(script: Script, alignment: AlignmentResult) -> VideoMetada
     )
 
 
-def _build_chapters(alignment: AlignmentResult) -> str:
-    """Format chapter timestamps for YouTube description."""
+def _build_chapters(script: Script, tts_result: TTSResult) -> str:
+    """Build chapter timestamps from TTS per-segment durations.
+
+    TTS durations are exact (each segment synthesized individually), unlike
+    alignment segment boundaries which can be wrong when number words appear
+    in narration body text.
+    """
     lines = ["0:00 Intro"]
 
-    for seg in sorted(alignment.segments, key=lambda s: s.start_sec):
-        t = seg.start_sec
-        m = int(t // 60)
-        s = int(t % 60)
+    # Intro line "Let's get right into it." has no separate TTS segment;
+    # segments start immediately at 0 in the full audio (before silence gap).
+    # Accumulate: cursor starts at 0, each segment begins at cursor.
+    silence_gap = 0.8
+    cursor = 0.0
+
+    for i, seg in enumerate(script.segments):
+        m = int(cursor // 60)
+        s = int(cursor % 60)
         timestamp = f"{m}:{s:02d}"
-        label = f"Number {seg.segment_idx}: {seg.label}"
-        lines.append(f"{timestamp} {label}")
+        lines.append(f"{timestamp} Number {seg.number}: {seg.label}")
+
+        dur = tts_result.per_segment_durations[i] if i < len(tts_result.per_segment_durations) else 0.0
+        cursor += dur + silence_gap
 
     return "\n".join(lines)
