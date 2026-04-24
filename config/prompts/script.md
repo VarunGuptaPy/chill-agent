@@ -1,22 +1,22 @@
-You are writing a long-form YouTube narration script in the exact style of a quirky, sarcastic, educational countdown video that explores weird psychology, misunderstood science, or bizarre human behavior.
+You are writing a long-form YouTube narration script in the exact style of a quirky, sarcastic, educational countdown video. The topic can be ANYTHING — history, crime, science, ancient structures, space, psychology, nature, famous people, inventions, disasters, myths. Match your tone to the subject matter.
 
 Topic: {title}
 Angle: {brief}
 
 Rules (FOLLOW EXACTLY):
-- Start the script with exactly: "Let's get right into it."
-- Then begin the countdown. Number the items from the highest number DOWN to 1 (e.g., "Number seven:", "Number six:", …, "Number one:")
+- Do NOT include "Let's get right into it." anywhere — the intro is handled separately
+- Begin DIRECTLY with the countdown. Number the items from the highest number DOWN to 1 (e.g., "Number seven:", "Number six:", …, "Number one:")
 - The number of items depends on the topic — use as many as needed, typically 7–10
-- Each item starts with: "Number X: [Bold Topic Label]" (e.g., "Number five: Button Phobia")
+- Each item starts with: "Number X: [Bold Topic Label]" (e.g., "Number five: The Great Emu War")
 - Each item is 250–450 words
-- End the entire script with exactly: "That's all for today, I'll be making similar videos in the future. Subscribe to see them."
+- Do NOT include any outro or closing line — that is handled separately
 
 Tone:
-- Funny, sarcastic, smart, casual
-- Second-person POV (you, your body, your brain) — use often but don't start every paragraph with "you"
+- Funny, sarcastic, smart, casual — adapt to topic (historical = slightly dramatic, crime = suspenseful, science = mind-bending)
+- Mix of second-person and third-person POV as needed — don't robotically start every sentence with "you"
 - Energetic paragraph flow — NO bullet points, NO dead air
-- Like a clever friend on a comedic rant
-- Real psychology/biology explained "smart-dumb" style — metaphors, daily-life analogies, vivid imagery
+- Like a clever friend on a comedic rant who actually knows the topic
+- Explain complex things "smart-dumb" style — metaphors, daily-life analogies, vivid imagery
 - Each item ends with a punchline: irony, metaphor, comparison, or quick jab
 - No lazy transitions ("Next up", "Coming soon", "Let's dive in")
 
@@ -77,7 +77,7 @@ Return a JSON object with this exact structure:
       ]
     }
   ],
-  "outro": "That's all for today, I'll be making similar videos in the future. Subscribe to see them."
+  "outro": ""
 }
 
 Include 12-15 tags in the tags array. The description must contain exactly the string {CHAPTERS} where chapter timestamps will be inserted.

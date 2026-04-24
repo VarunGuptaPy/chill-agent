@@ -48,7 +48,23 @@ def build_tts(settings: Settings):
 def build_image_provider(settings: Settings):
     provider = settings.image_provider.lower()
 
-    if provider == "gemini":
+    if provider == "pollinations":
+        from chill_agent.services.image.pollinations import PollinationsImageProvider
+
+        if not settings.pollinations_api_key:
+            logger.warning(
+                "pollinations_no_api_key",
+                message="No POLLINATIONS_API_KEY set — using anonymous mode (2 s delay between images). "
+                        "Get a free key at enter.pollinations.ai to remove rate limits.",
+            )
+        return PollinationsImageProvider(
+            api_key=settings.pollinations_api_key,
+            model=settings.pollinations_model,
+            width=settings.image_width,
+            height=settings.image_height,
+        )
+
+    elif provider == "gemini":
         from chill_agent.services.image.gemini import GeminiImageClient
 
         if not settings.google_ai_api_key:
@@ -92,7 +108,7 @@ def build_image_provider(settings: Settings):
     else:
         raise ValueError(
             f"Unknown image provider: {provider}. "
-            "Use 'gemini', 'replicate_flux', 'sdxl_local', or 'local_placeholder'."
+            "Use 'pollinations', 'gemini', 'replicate_flux', 'sdxl_local', or 'local_placeholder'."
         )
 
 

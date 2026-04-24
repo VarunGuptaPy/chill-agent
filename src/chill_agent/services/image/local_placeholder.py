@@ -37,6 +37,8 @@ class LocalPlaceholderClient:
         prompt: str,
         output_path: Path,
         aspect_ratio: str = "16:9",
+        width=None,
+        height=None,
     ) -> ImageResult:
         from PIL import Image, ImageDraw, ImageFont
 

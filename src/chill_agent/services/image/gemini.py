@@ -45,6 +45,8 @@ class GeminiImageClient:
         output_path: Path,
         aspect_ratio: str = "16:9",
         retries: int = 3,
+        width=None,
+        height=None,
     ) -> ImageResult:
         from google.genai import types
 

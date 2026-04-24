@@ -64,18 +64,18 @@ def generate_images(
 
     style_suffix = _STYLE_SUFFIX_PATH.read_text(encoding="utf-8").strip()
 
-    # Build flat task list: (seg_idx, img_idx, prompt, out_path, aspect_ratio)
+    # Build flat task list: (seg_idx, img_idx, prompt, out_path, width, height)
     tasks = []
     for seg_idx, seg in enumerate(script.segments):
         for img_idx, scene_prompt in enumerate(seg.image_prompts):
             out_path = segment_sub_image_path(output_root, run_id, seg_idx, img_idx)
             prompt = _build_prompt(scene_prompt, style_suffix, llm)
-            tasks.append(("segment", seg_idx, img_idx, prompt, out_path, "16:9"))
+            tasks.append(("segment", seg_idx, img_idx, prompt, out_path, 1920, 1080))
 
-    # Thumbnail
+    # Thumbnail — 1280×720 (YouTube thumbnail spec)
     thumb_path = thumbnail_raw_path(output_root, run_id)
     thumb_prompt = _build_prompt(script.thumbnail_prompt, style_suffix, llm)
-    tasks.append(("thumbnail", -1, 0, thumb_prompt, thumb_path, "16:9"))
+    tasks.append(("thumbnail", -1, 0, thumb_prompt, thumb_path, 1280, 720))
 
     # Prepare result structure
     seg_images: List[List[Optional[Path]]] = [
@@ -84,14 +84,14 @@ def generate_images(
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {}
-        for task_type, seg_idx, img_idx, prompt, out_path, aspect_ratio in tasks:
+        for task_type, seg_idx, img_idx, prompt, out_path, width, height in tasks:
             if out_path.exists() and not force:
                 logger.debug("image_cache_hit", seg=seg_idx, img=img_idx)
                 if task_type == "segment":
                     seg_images[seg_idx][img_idx] = out_path
                 continue
 
-            future = executor.submit(_generate_one, image_provider, prompt, out_path, aspect_ratio)
+            future = executor.submit(_generate_one, image_provider, prompt, out_path, width, height)
             futures[future] = (task_type, seg_idx, img_idx, out_path)
 
         for future in as_completed(futures):
@@ -190,6 +190,7 @@ def _generate_one(
     provider: ImageProvider,
     prompt: str,
     output_path: Path,
-    aspect_ratio: str,
+    width: int,
+    height: int,
 ) -> ImageResult:
-    return provider.generate(prompt=prompt, output_path=output_path, aspect_ratio=aspect_ratio)
+    return provider.generate(prompt=prompt, output_path=output_path, width=width, height=height)

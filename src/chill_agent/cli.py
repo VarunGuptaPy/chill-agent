@@ -57,6 +57,7 @@ def init():
     checks = [
         ("DEEPSEEK_API_KEY", settings.deepseek_api_key, True),
         ("FISH_AUDIO_API_KEY / ELEVENLABS_API_KEY", settings.fish_audio_api_key or settings.elevenlabs_api_key, True),
+        ("POLLINATIONS_API_KEY", settings.pollinations_api_key, False),  # optional — anonymous works, just slower
         ("GOOGLE_AI_API_KEY", settings.google_ai_api_key, settings.image_provider == "gemini"),
         ("REPLICATE_API_TOKEN", settings.replicate_api_token, settings.image_provider == "replicate_flux"),
         ("TTS_VOICE_ID", settings.tts_voice_id, False),

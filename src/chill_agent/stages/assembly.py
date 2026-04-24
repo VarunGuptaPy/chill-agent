@@ -1,4 +1,10 @@
-"""Stage 6: Video assembly — Ken Burns clips + narration + music + optional captions."""
+"""Stage 6: Video assembly — Ken Burns clips + narration + music + optional captions.
+
+Video layout:
+  [intro clip: brown stick figure "Let's get right into it."]
+  [segment clips: Ken Burns pan/zoom over generated images]
+  [outro clip: brown stick figure "That's all for this video..."]
+"""
 
 from __future__ import annotations
 
@@ -17,6 +23,7 @@ from chill_agent.media.ffmpeg_ops import (
     mux_video_audio,
 )
 from chill_agent.media.music import pick_music_track
+from chill_agent.media.stick_figure import ensure_intro_frame, ensure_outro_frame
 from chill_agent.stages.tts import TTSResult
 from chill_agent.utils.paths import (
     final_video_path,
@@ -27,6 +34,7 @@ from chill_agent.utils.paths import (
 logger = structlog.get_logger()
 
 _FONT_PATH = Path(__file__).parent.parent.parent.parent / "assets" / "fonts" / "Anton-Regular.ttf"
+_ASSETS_DIR = Path(__file__).parent.parent.parent.parent / "assets"
 
 # Ken Burns clip duration targets (seconds per individual clip)
 _TARGET_CLIP_SECS = 10.0
@@ -55,9 +63,6 @@ def assemble_video(
     raw_video = video_dir(output_root, run_id) / "concat_raw.mp4"
     with_voice = video_dir(output_root, run_id) / "with_voice.mp4"
 
-    # Step 1+2: Build Ken Burns clips and concatenate.
-    # Skipped when concat_raw.mp4 already exists (and force is not set) so that
-    # re-running only the mux step is fast.
     if not raw_video.exists() or force:
         effective_seg_nums = segment_numbers or list(range(1, len(segment_image_paths) + 1))
         all_clips = _build_all_clips(
@@ -74,8 +79,6 @@ def assemble_video(
     else:
         logger.info("assembly_concat_cache_hit", path=str(raw_video))
 
-    # Step 3: Mux with narration audio.
-    # Skipped when with_voice.mp4 already exists (and force is not set).
     if not with_voice.exists() or force:
         logger.info("assembly_mux_voice")
         mux_video_audio(raw_video, tts_result.full_audio_path, with_voice)
@@ -84,7 +87,6 @@ def assemble_video(
 
     current = with_voice
 
-    # Step 4: Mix background music (optional)
     if music_dir:
         music_track = pick_music_track(music_dir)
         if music_track:
@@ -93,7 +95,6 @@ def assemble_video(
             mix_music(current, music_track, with_music, music_volume=0.12)
             current = with_music
 
-    # Step 5: Burn captions (optional)
     srt_file = srt_path(output_root, run_id)
     if enable_captions and srt_file.exists() and alignment.srt_content:
         with_captions = video_dir(output_root, run_id) / "with_captions.mp4"
@@ -116,27 +117,40 @@ def _build_all_clips(
     segment_numbers: List[int],
     force: bool,
 ) -> List[Path]:
-    """Build Ken Burns clips for all segments, cycling through images."""
+    """Build all clips: [intro] + [segment Ken Burns clips] + [outro]."""
 
+    vdir = video_dir(output_root, run_id)
     all_clips: List[Path] = []
     global_clip_idx = 0
 
+    # ── Intro clip ────────────────────────────────────────────────────────────
+    intro_frame = ensure_intro_frame(_ASSETS_DIR)
+    intro_dur = max(tts_result.intro_duration, 2.0)
+    intro_clip = vdir / "clip_intro.mp4"
+    if not intro_clip.exists() or force:
+        logger.info("assembly_build_intro_clip", duration=round(intro_dur, 2))
+        build_ken_burns_clip(
+            image_path=intro_frame,
+            output_path=intro_clip,
+            duration=intro_dur,
+            mode_idx=0,  # zoom_in — gentle open
+        )
+    else:
+        logger.debug("assembly_intro_clip_cache_hit")
+    all_clips.append(intro_clip)
+
+    # ── Segment clips ─────────────────────────────────────────────────────────
     for seg_pos, (img_paths, seg_num) in enumerate(zip(segment_image_paths, segment_numbers)):
         seg_duration = _get_segment_duration(seg_num, seg_pos, alignment, tts_result)
         if seg_duration < 1.0:
             seg_duration = 5.0
 
         n_unique = len(img_paths)
-
-        # Prefer showing each unique image exactly once at a comfortable hold duration.
-        # Only cycle images if the segment is so long that each image would exceed MAX_CLIP_SECS.
         base_clip_dur = seg_duration / n_unique
         if base_clip_dur <= _MAX_CLIP_SECS:
-            # All unique images fit without repeating — ideal path
             n_clips = n_unique
             clip_duration = max(_MIN_CLIP_SECS, base_clip_dur)
         else:
-            # Segment is very long; need more clips than unique images, so some will cycle
             n_clips = max(n_unique, round(seg_duration / _TARGET_CLIP_SECS))
             clip_duration = seg_duration / n_clips
             clip_duration = max(_MIN_CLIP_SECS, min(_MAX_CLIP_SECS, clip_duration))
@@ -153,7 +167,7 @@ def _build_all_clips(
 
         for clip_i in range(n_clips):
             img_path = img_paths[clip_i % n_unique]
-            clip_path = video_dir(output_root, run_id) / f"clip_{global_clip_idx:03d}.mp4"
+            clip_path = vdir / f"clip_{global_clip_idx:03d}.mp4"
             global_clip_idx += 1
 
             if clip_path.exists() and not force:
@@ -169,6 +183,22 @@ def _build_all_clips(
             )
             all_clips.append(clip_path)
 
+    # ── Outro clip ────────────────────────────────────────────────────────────
+    outro_frame = ensure_outro_frame(_ASSETS_DIR)
+    outro_dur = max(tts_result.outro_duration, 3.0)
+    outro_clip = vdir / "clip_outro.mp4"
+    if not outro_clip.exists() or force:
+        logger.info("assembly_build_outro_clip", duration=round(outro_dur, 2))
+        build_ken_burns_clip(
+            image_path=outro_frame,
+            output_path=outro_clip,
+            duration=outro_dur,
+            mode_idx=1,  # zoom_out — gentle close
+        )
+    else:
+        logger.debug("assembly_outro_clip_cache_hit")
+    all_clips.append(outro_clip)
+
     return all_clips
 
 
@@ -178,18 +208,12 @@ def _get_segment_duration(
     alignment: AlignmentResult,
     tts_result: TTSResult,
 ) -> float:
-    """Get segment duration from TTS (ground truth — each segment synthesized individually).
-
-    Alignment segment boundaries are unreliable: number words like "six" or "one"
-    can appear anywhere in narration text, causing _find_segment_boundaries to
-    match the wrong position. TTS per_segment_durations are always exact.
-    """
+    """Get segment duration from TTS (ground truth — each segment synthesized individually)."""
     if seg_pos < len(tts_result.per_segment_durations):
         dur = tts_result.per_segment_durations[seg_pos]
         if dur >= 1.0:
             return dur
 
-    # Fallback: alignment (only if TTS data is genuinely missing)
     for seg in alignment.segments:
         if seg.segment_idx == seg_num:
             dur = seg.end_sec - seg.start_sec

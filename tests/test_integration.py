@@ -102,10 +102,11 @@ def mock_tts(tmp_path):
 def mock_image_provider(tmp_path):
     provider = MagicMock()
 
-    def generate(prompt, output_path, size=(1920, 1080)):
+    def generate(prompt, output_path, aspect_ratio=None, width=None, height=None, size=(1920, 1080)):
+        w, h = (width or size[0], height or size[1])
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_minimal_png(output_path, size)
-        return ImageResult(path=output_path, width=size[0], height=size[1], prompt_used=prompt)
+        _write_minimal_png(output_path, (w, h))
+        return ImageResult(path=output_path, width=w, height=h, prompt_used=prompt)
 
     provider.generate.side_effect = generate
     return provider

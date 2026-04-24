@@ -1,14 +1,20 @@
-"""Stage 3: TTS — synthesize narration per segment, stitch with silence."""
+"""Stage 3: TTS — synthesize narration per segment, stitch with silence.
+
+Intro ("Let's get right into it.") and outro are synthesized as separate
+fixed-text clips and cached as assets so they are only generated once per
+voice_id change.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import structlog
 
 from chill_agent.media.ffmpeg_ops import concat_audio_files_with_silence
+from chill_agent.media.stick_figure import INTRO_TEXT, OUTRO_TEXT
 from chill_agent.services.tts.base import AudioResult, TTSProvider
 from chill_agent.stages.script import Script
 from chill_agent.utils.paths import audio_dir, full_audio_path, segment_audio_path
@@ -23,6 +29,51 @@ class TTSResult:
     total_duration_seconds: float
     total_chars: int
     per_segment_durations: List[float]
+    intro_duration: float = 0.0
+    outro_duration: float = 0.0
+    intro_audio_path: Optional[Path] = None
+    outro_audio_path: Optional[Path] = None
+
+
+def _audio_duration(path: Path) -> float:
+    try:
+        from pydub import AudioSegment as PyAudioSeg
+        audio = PyAudioSeg.from_file(str(path))
+        return len(audio) / 1000.0
+    except Exception:
+        return path.stat().st_size / 16000.0
+
+
+def _ensure_intro_outro_audio(
+    tts: TTSProvider,
+    voice_id: str,
+    assets_dir: Path,
+    force: bool = False,
+) -> tuple[Path, float, Path, float]:
+    """Synthesize intro and outro audio into assets/ and return (intro_path, intro_dur, outro_path, outro_dur).
+
+    Files are cached — only re-synthesized when missing or force=True.
+    Named with voice_id prefix so swapping voices regenerates them automatically.
+    """
+    safe_vid = "".join(c if c.isalnum() else "_" for c in (voice_id or "default"))[:32]
+    intro_path = assets_dir / f"intro_{safe_vid}.wav"
+    outro_path = assets_dir / f"outro_{safe_vid}.wav"
+
+    assets_dir.mkdir(parents=True, exist_ok=True)
+
+    if not intro_path.exists() or force:
+        logger.info("tts_synthesizing_intro")
+        tts.synthesize(text=INTRO_TEXT, voice_id=voice_id, output_path=intro_path)
+    else:
+        logger.info("tts_intro_cache_hit", path=str(intro_path))
+
+    if not outro_path.exists() or force:
+        logger.info("tts_synthesizing_outro")
+        tts.synthesize(text=OUTRO_TEXT, voice_id=voice_id, output_path=outro_path)
+    else:
+        logger.info("tts_outro_cache_hit", path=str(outro_path))
+
+    return intro_path, _audio_duration(intro_path), outro_path, _audio_duration(outro_path)
 
 
 def synthesize_voice(
@@ -33,17 +84,27 @@ def synthesize_voice(
     voice_id: str,
     force: bool = False,
 ) -> TTSResult:
-    """Synthesize narration for each segment and stitch into a single WAV."""
+    """Synthesize narration for each segment and stitch into a single WAV.
 
+    Full audio layout: [intro] [seg0] [seg1] ... [segN] [outro]
+    with 0.8s silence between each piece.
+    """
     full_audio = full_audio_path(output_root, run_id)
 
-    # Idempotency: if full audio already exists, load segment durations and return
+    # Idempotency: if full audio already exists, load and return cached result
     if full_audio.exists() and not force:
         logger.info("tts_cache_hit", full_audio=str(full_audio))
-        return _load_cached(script, run_id, output_root, full_audio)
+        return _load_cached(tts, script, run_id, output_root, full_audio, voice_id)
 
-    seg_paths = []
-    seg_durations = []
+    # Intro/outro — synthesized into assets/ dir so they persist across runs
+    assets_dir = output_root.parent / "assets" / "audio"
+    intro_path, intro_dur, outro_path, outro_dur = _ensure_intro_outro_audio(
+        tts, voice_id, assets_dir, force=False
+    )
+
+    # Per-segment synthesis
+    seg_paths: List[Path] = []
+    seg_durations: List[float] = []
     total_chars = 0
 
     for i, seg in enumerate(script.segments):
@@ -57,28 +118,25 @@ def synthesize_voice(
 
         seg_paths.append(out_path)
         total_chars += len(seg.narration)
+        seg_durations.append(_audio_duration(out_path))
 
-        # Measure duration
-        try:
-            from pydub import AudioSegment as PyAudioSeg
-            audio = PyAudioSeg.from_file(str(out_path))
-            seg_durations.append(len(audio) / 1000.0)
-        except Exception:
-            seg_durations.append(out_path.stat().st_size / 16000.0)
-
-    # Stitch all segments into one WAV with 0.8s silence between
+    # Stitch: intro + all segments + outro with 0.8s silence between
     logger.info("tts_stitching", segments=len(seg_paths))
+    all_parts = [intro_path] + seg_paths + [outro_path]
     concat_audio_files_with_silence(
-        audio_paths=seg_paths,
+        audio_paths=all_parts,
         output_path=full_audio,
         silence_sec=0.8,
     )
 
-    total_duration = sum(seg_durations) + 0.8 * (len(seg_durations) - 1)
+    silence_gaps = len(all_parts) - 1
+    total_duration = intro_dur + sum(seg_durations) + outro_dur + 0.8 * silence_gaps
 
     logger.info(
         "tts_done",
         segments=len(seg_paths),
+        intro_duration=round(intro_dur, 1),
+        outro_duration=round(outro_dur, 1),
         total_duration=round(total_duration, 1),
         total_chars=total_chars,
     )
@@ -89,28 +147,30 @@ def synthesize_voice(
         total_duration_seconds=total_duration,
         total_chars=total_chars,
         per_segment_durations=seg_durations,
+        intro_duration=intro_dur,
+        outro_duration=outro_dur,
+        intro_audio_path=intro_path,
+        outro_audio_path=outro_path,
     )
 
 
-def _load_cached(script: Script, run_id: str, output_root: Path, full_audio: Path) -> TTSResult:
-    seg_paths = []
-    seg_durations = []
+def _load_cached(
+    tts: TTSProvider,
+    script: Script,
+    run_id: str,
+    output_root: Path,
+    full_audio: Path,
+    voice_id: str,
+) -> TTSResult:
+    seg_paths: List[Path] = []
+    seg_durations: List[float] = []
     total_chars = 0
 
     for i, seg in enumerate(script.segments):
         p = segment_audio_path(output_root, run_id, i)
         seg_paths.append(p)
         total_chars += len(seg.narration)
-
-        if p.exists():
-            try:
-                from pydub import AudioSegment as PyAudioSeg
-                a = PyAudioSeg.from_file(str(p))
-                seg_durations.append(len(a) / 1000.0)
-            except Exception:
-                seg_durations.append(p.stat().st_size / 16000.0)
-        else:
-            seg_durations.append(0.0)
+        seg_durations.append(_audio_duration(p) if p.exists() else 0.0)
 
     try:
         from pydub import AudioSegment as PyAudioSeg
@@ -119,10 +179,23 @@ def _load_cached(script: Script, run_id: str, output_root: Path, full_audio: Pat
     except Exception:
         total_duration = sum(seg_durations)
 
+    # Attempt to load intro/outro durations from cached asset files
+    assets_dir = output_root.parent / "assets" / "audio"
+    safe_vid = "".join(c if c.isalnum() else "_" for c in (voice_id or "default"))[:32]
+    intro_path = assets_dir / f"intro_{safe_vid}.wav"
+    outro_path = assets_dir / f"outro_{safe_vid}.wav"
+
+    intro_dur = _audio_duration(intro_path) if intro_path.exists() else 2.0
+    outro_dur = _audio_duration(outro_path) if outro_path.exists() else 4.0
+
     return TTSResult(
         segment_audio_paths=seg_paths,
         full_audio_path=full_audio,
         total_duration_seconds=total_duration,
         total_chars=total_chars,
         per_segment_durations=seg_durations,
+        intro_duration=intro_dur,
+        outro_duration=outro_dur,
+        intro_audio_path=intro_path if intro_path.exists() else None,
+        outro_audio_path=outro_path if outro_path.exists() else None,
     )

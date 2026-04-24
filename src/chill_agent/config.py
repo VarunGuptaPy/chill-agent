@@ -31,6 +31,11 @@ class Settings(BaseSettings):
 
     # Images
     image_provider: str = "gemini"
+    pollinations_api_key: str = ""   # free sk_ key from enter.pollinations.ai (removes rate limits)
+    pollinations_model: str = "turbo"  # flux | turbo | gptimage1 | flux-pro
+    image_width: int = 1920
+    image_height: int = 1080
+    # Fallback providers
     google_ai_api_key: str = ""
     gemini_image_model: str = "gemini-2.5-flash-preview-image-generation"
     image_rate_limit_seconds: float = 6.0  # Gemini free tier: ~10 RPM

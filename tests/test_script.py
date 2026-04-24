@@ -53,18 +53,21 @@ def test_parse_segments_sorted_descending():
     assert numbers == sorted(numbers, reverse=True)
 
 
-def test_full_narration_has_intro():
+def test_full_narration_contains_segments():
     raw = _make_valid_script_json()
     script = _parse_script(raw)
-    assert script.full_narration.startswith("Let's get right into it.")
+    # full_narration is segments only — intro/outro are handled as separate TTS clips
+    assert "Number" in script.full_narration
+    # Intro and outro should NOT be duplicated inside full_narration
+    assert "Let's get right into it." not in script.full_narration
 
 
-def test_full_narration_ends_with_outro():
+def test_full_narration_is_segments_only():
     raw = _make_valid_script_json()
     script = _parse_script(raw)
-    assert script.full_narration.endswith(
-        "That's all for today, I'll be making similar videos in the future. Subscribe to see them."
-    )
+    # Each segment narration should appear in full_narration
+    for seg in script.segments:
+        assert seg.narration in script.full_narration
 
 
 def test_word_count():

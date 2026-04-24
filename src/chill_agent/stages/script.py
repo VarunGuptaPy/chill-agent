@@ -57,12 +57,8 @@ class Script:
 
     @property
     def full_narration(self) -> str:
-        """Full narration text: intro marker + all segments + outro."""
-        parts = ["Let's get right into it."]
-        for seg in self.segments:
-            parts.append(seg.narration)
-        parts.append(self.outro)
-        return "\n\n".join(parts)
+        """Segment narration only — intro and outro are handled as separate TTS clips."""
+        return "\n\n".join(seg.narration for seg in self.segments)
 
     @property
     def word_count(self) -> int:
@@ -109,15 +105,53 @@ def generate_script(llm: LLMProvider, title: str, brief: str) -> Script:
     return script
 
 
-def _parse_script(raw: str) -> Script:
+def _robust_json_parse(raw: str) -> dict:
+    """Parse JSON from LLM output with progressive fallbacks.
+
+    LLMs sometimes emit invalid JSON (unescaped quotes, truncated output, extra
+    text before/after the object).  We try three strategies in order:
+    1. Direct parse — works for well-formed output.
+    2. json_repair — handles unescaped quotes, trailing commas, truncation.
+    3. Regex extract then json_repair — strips any surrounding prose first.
+    """
+    # Strategy 1: direct parse
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        match = re.search(r"\{[\s\S]+\}", raw)
-        if match:
-            data = json.loads(match.group(0))
-        else:
-            raise ValueError(f"Could not parse script JSON: {e}\nRaw: {raw[:500]}")
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # Strategy 2: json_repair on the full string
+    try:
+        from json_repair import repair_json
+        repaired = repair_json(raw, return_objects=True)
+        if isinstance(repaired, dict) and repaired:
+            logger.warning("script_json_repaired", method="full_string")
+            return repaired
+    except Exception:
+        pass
+
+    # Strategy 3: extract outermost {...} block, then json_repair
+    match = re.search(r"\{[\s\S]+\}", raw)
+    if match:
+        try:
+            from json_repair import repair_json
+            repaired = repair_json(match.group(0), return_objects=True)
+            if isinstance(repaired, dict) and repaired:
+                logger.warning("script_json_repaired", method="regex_extract")
+                return repaired
+        except Exception:
+            pass
+        # Last resort: plain parse on the extracted block
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Could not parse script JSON after all fallbacks: {e}\nRaw: {raw[:500]}")
+
+    raise ValueError(f"No JSON object found in LLM output.\nRaw: {raw[:500]}")
+
+
+def _parse_script(raw: str) -> Script:
+    data = _robust_json_parse(raw)
 
     segments = []
     for seg_data in data.get("segments", []):
@@ -153,7 +187,7 @@ def _parse_script(raw: str) -> Script:
         tags=list(data.get("tags", [])),
         thumbnail_prompt=str(data.get("thumbnail_prompt", "")),
         segments=segments,
-        outro=str(data.get("outro", "That's all for today, I'll be making similar videos in the future. Subscribe to see them.")),
+        outro=str(data.get("outro", "")),
         raw_json=raw,
     )
 

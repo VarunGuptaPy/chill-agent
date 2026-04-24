@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Optional, Protocol
 
 
 @dataclass
@@ -21,4 +21,6 @@ class ImageProvider(Protocol):
         prompt: str,
         output_path: Path,
         aspect_ratio: str = "16:9",
+        width: Optional[int] = None,
+        height: Optional[int] = None,
     ) -> ImageResult: ...

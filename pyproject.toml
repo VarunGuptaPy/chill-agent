@@ -32,6 +32,7 @@ dependencies = [
     "pydub>=0.25.1",
     "requests>=2.31.0",
     "tenacity>=8.3.0",
+    "json-repair>=0.30.0",
 ]
 
 [project.optional-dependencies]

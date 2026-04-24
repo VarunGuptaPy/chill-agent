@@ -54,6 +54,8 @@ class SDXLLocalClient:
         prompt: str,
         output_path: Path,
         aspect_ratio: str = "16:9",
+        width=None,
+        height=None,
     ) -> ImageResult:
         _AR: Dict[str, Tuple[int, int]] = {
             "16:9": (1280, 720), "9:16": (720, 1280),
