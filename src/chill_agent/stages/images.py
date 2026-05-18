@@ -26,7 +26,7 @@ _STYLE_SUFFIX_PATH = (
 
 # Safety suffix appended to every prompt sent to the model
 # NOTE: avoid NSFW keywords (nudity/blood/etc.) even when negated — Flux flags them regardless
-_SAFETY_SUFFIX = ", safe for work, family friendly, all ages, cartoon style"
+_SAFETY_SUFFIX = ", safe for work, family friendly"
 
 # Blocklist — any prompt containing these terms is replaced with a safe fallback
 _NSFW_BLOCKLIST = [
@@ -149,9 +149,9 @@ def generate_images(
 
 
 def _build_prompt(scene_prompt: str, style_suffix: str, llm: Optional[LLMProvider] = None) -> str:
-    """Assemble final prompt: style first, then scene, then safety suffix."""
+    """Assemble final prompt: scene subject first so the model knows what to draw, then style."""
     safe_scene = _sanitize_prompt(scene_prompt, llm)
-    return f"{style_suffix}. Scene: {safe_scene}{_SAFETY_SUFFIX}"
+    return f"{safe_scene}. Art style: {style_suffix}{_SAFETY_SUFFIX}"
 
 
 def _sanitize_prompt(prompt: str, llm: Optional[LLMProvider] = None) -> str:

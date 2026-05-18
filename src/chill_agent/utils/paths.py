@@ -54,6 +54,10 @@ def srt_path(output_root: Path, run_id: str) -> Path:
     return run_dir(output_root, run_id) / "captions.srt"
 
 
+def ass_path(output_root: Path, run_id: str) -> Path:
+    return run_dir(output_root, run_id) / "captions.ass"
+
+
 def segment_video_path(output_root: Path, run_id: str, idx: int) -> Path:
     return video_dir(output_root, run_id) / f"seg_{idx:02d}.mp4"
 

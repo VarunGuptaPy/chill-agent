@@ -132,11 +132,11 @@ class GeminiImageClient:
 def _aspect_ratio_to_dims(aspect_ratio: str) -> tuple[int, int]:
     """Return (width, height) for a given aspect ratio string."""
     mapping = {
-        "16:9": (1280, 720),
-        "9:16": (720, 1280),
-        "4:3": (1024, 768),
-        "3:4": (768, 1024),
+        "16:9": (1024, 576),
+        "9:16": (576, 1024),
+        "4:3": (768, 576),
+        "3:4": (576, 768),
         "1:1": (1024, 1024),
-        "21:9": (1680, 720),
+        "21:9": (1024, 439),
     }
-    return mapping.get(aspect_ratio, (1280, 720))
+    return mapping.get(aspect_ratio, (1024, 576))

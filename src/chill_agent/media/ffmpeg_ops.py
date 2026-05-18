@@ -168,21 +168,28 @@ def mix_music(
 
 def burn_captions(
     video_path: Path,
-    srt_path: Path,
+    caption_path: Path,
     output_path: Path,
     font_path: Optional[Path] = None,
 ) -> Path:
-    """Burn SRT captions into video using FFmpeg subtitles filter."""
-    font_str = ""
-    if font_path and font_path.exists():
-        font_str = f":fontsdir={font_path.parent}:force_style='FontName={font_path.stem},"
+    """Burn captions into video. Supports ASS karaoke (.ass) and plain SRT (.srt)."""
+    is_ass = caption_path.suffix.lower() == ".ass"
 
-    # Style: white text, black outline, bottom-center
-    style = (
-        "FontSize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,"
-        "BorderStyle=1,Outline=2,Shadow=1,Alignment=2"
-    )
-    subs_filter = f"subtitles={srt_path.resolve()}:force_style='{style}'"
+    if is_ass:
+        # ASS karaoke — use embedded styles, only add fontsdir so Anton loads
+        base = f"subtitles={caption_path.resolve()}"
+        if font_path and font_path.parent.exists():
+            base += f":fontsdir={font_path.parent}"
+        subs_filter = base
+        description = "burn_ass_karaoke"
+    else:
+        # Plain SRT fallback with manual styling
+        style = (
+            "FontSize=22,PrimaryColour=&Hffffff,OutlineColour=&H000000,"
+            "BorderStyle=1,Outline=2,Shadow=1,Alignment=2"
+        )
+        subs_filter = f"subtitles={caption_path.resolve()}:force_style='{style}'"
+        description = "burn_srt_captions"
 
     _run_ffmpeg(
         [
@@ -197,7 +204,7 @@ def burn_captions(
             "-c:a", "copy",
             str(output_path),
         ],
-        description="burn_captions",
+        description=description,
     )
     return output_path
 

@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     # Images
     image_provider: str = "gemini"
     pollinations_api_key: str = ""   # free sk_ key from enter.pollinations.ai (removes rate limits)
-    pollinations_model: str = "turbo"  # flux | turbo | gptimage1 | flux-pro
+    pollinations_model: str = "gptimage-1"  # flux | turbo | gptimage-1 | flux-pro | gptimage-large
     image_width: int = 1920
     image_height: int = 1080
     # Fallback providers

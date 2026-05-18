@@ -26,17 +26,27 @@ _RETRY_WAITS = [15, 30, 60]  # attempt 1→2, 2→3, 3→fail
 class PollinationsImageProvider:
     BASE_URL = "https://image.pollinations.ai/prompt"
 
+    # Negative prompt sent on every call to block unwanted art styles
+    DEFAULT_NEGATIVE = (
+        "sketchy lines, rough textures, cross-hatching, pencil marks, hand-drawn texture, "
+        "shading on character, oval head, egg-shaped head, realistic proportions, "
+        "muscular body, rounded limbs, detailed hands, fingers, boots, shoes, "
+        "3D render, photorealistic, watercolor, oil painting"
+    )
+
     def __init__(
         self,
         api_key: str = "",
         model: str = "flux",
         width: int = 1920,
         height: int = 1080,
+        negative_prompt: str = "",
     ) -> None:
         self.api_key = api_key.strip()
         self.model = model or "flux"
         self.default_width = width
         self.default_height = height
+        self.negative_prompt = negative_prompt or self.DEFAULT_NEGATIVE
         self._last_call_at: float = 0.0
 
     def generate(
@@ -69,6 +79,7 @@ class PollinationsImageProvider:
             "model": self.model,
             "nologo": "true",
             "seed": seed,
+            "negative": self.negative_prompt,
         }
         if self.api_key:
             params["key"] = self.api_key

@@ -35,19 +35,22 @@ Concrete mental model: read the narration back to yourself and ask "what would a
 Rules for each image prompt:
 - Every image MUST be visually distinct — different scene, setting, action, or character pose from every other image in the same segment. Never repeat the same visual.
 - Match the image to the beat of the narration happening at that moment: if the script is explaining a mechanism, show it happening; if it's delivering a punchline, show the reaction; if it's giving an analogy, show the analogy.
-- Keep each prompt under 30 words
+- Keep each prompt under 35 words
 - Describe the scene only — DO NOT mention art style (the style is applied separately)
+- CRITICAL — USE SPECIFIC NAMES: If the narration mentions a real place, landmark, building, monument, country, animal, organ, object, or named concept — use its ACTUAL NAME in the image prompt. Never replace a specific thing with a generic description. Examples of what NOT to do: ❌ "large dome-shaped building" (should be ✅ "Gol Gumbaz mausoleum, Bijapur India"), ❌ "a famous tower" (should be ✅ "Eiffel Tower, Paris"), ❌ "an organ in the chest" (should be ✅ "human heart"), ❌ "a large snake" (should be ✅ "king cobra"). The image model knows what real things look like — give it the name and let it render it correctly.
 - Good prompt examples:
   - "stick figure sitting on couch looking bored, TV remote on coffee table"
   - "stick figure in bed with thought bubbles showing weird dreams"
-  - "stick figure pointing at brain diagram on whiteboard"
+  - "stick figure pointing at detailed brain diagram poster on laboratory wall"
   - "stick figure with wide shocked eyes and sweat drops flying off head"
-  - "stick figure at doctor office, doctor pointing at x-ray on wall"
-  - "close-up of stick figure brain glowing and sparking with electricity"
-  - "stick figure running from giant shadow shaped like a deadline"
+  - "stick figure at doctor office, doctor pointing at human skeleton x-ray"
+  - "stick figure looking up at the Great Wall of China, stretching into mountains"
+  - "stick figure standing in front of Colosseum in Rome, looking tiny next to it"
   - "stick figure holding trophy but crying at same time"
   - "two stick figures arguing, one has lightbulb above head, other has question mark"
-  - "stick figure asleep at desk, tiny ZZZ floating, coffee cup untouched"
+  - "stick figure at microscope looking at bacteria colony on petri dish"
+  - "stick figure holding a human heart model, confused expression"
+  - "stick figure inside Sistine Chapel looking up at ceiling, jaw dropped"
 
 For the thumbnail_prompt, describe a group scene:
 "group of 4-5 stick figure characters with round white heads, each doing something different related to [topic], exaggerated expressions, chaotic fun composition"

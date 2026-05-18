@@ -27,7 +27,7 @@ class SegmentTimestamp:
 class AlignmentResult:
     segments: List[SegmentTimestamp]
     word_timestamps: List[dict]  # raw word-level data
-    srt_content: Optional[str]   # SRT captions if generated
+    srt_content: Optional[str]   # caption file content (ASS karaoke or SRT)
     total_duration: float
 
 
@@ -36,18 +36,19 @@ def align(
     full_text: str,
     segment_labels: List[Tuple[int, str]],  # [(seg_idx, label_text_start), ...]
     output_srt_path: Optional[Path] = None,
+    output_ass_path: Optional[Path] = None,
 ) -> AlignmentResult:
     """Run forced alignment. Falls back to even distribution if WhisperX unavailable."""
 
     try:
-        return _align_whisperx(audio_path, full_text, segment_labels, output_srt_path)
+        return _align_whisperx(audio_path, full_text, segment_labels, output_srt_path, output_ass_path)
     except ImportError:
         logger.warning(
             "whisperx_not_available",
             message="WhisperX not installed. Using approximate timestamps. "
             "Install with: pip install whisperx",
         )
-        return _align_approximate(audio_path, full_text, segment_labels, output_srt_path)
+        return _align_approximate(audio_path, full_text, segment_labels, output_srt_path, output_ass_path)
 
 
 def _align_whisperx(
@@ -55,6 +56,7 @@ def _align_whisperx(
     full_text: str,
     segment_labels: List[Tuple[int, str]],
     output_srt_path: Optional[Path],
+    output_ass_path: Optional[Path] = None,
 ) -> AlignmentResult:
     import whisperx
 
@@ -97,17 +99,21 @@ def _align_whisperx(
     # Map segment labels to timestamps by finding their marker text in the word stream
     segment_times = _find_segment_boundaries(word_timestamps, segment_labels, total_duration)
 
-    srt_content = None
-    if output_srt_path:
-        srt_content = _generate_srt(word_timestamps)
-        output_srt_path.write_text(srt_content, encoding="utf-8")
+    caption_content = None
+    if output_ass_path:
+        caption_content = _generate_ass_karaoke(word_timestamps)
+        output_ass_path.write_text(caption_content, encoding="utf-8")
+        logger.info("ass_karaoke_written", path=str(output_ass_path))
+    elif output_srt_path:
+        caption_content = _generate_srt(word_timestamps)
+        output_srt_path.write_text(caption_content, encoding="utf-8")
 
     logger.info("whisperx_align_done", segments=len(segment_times), total_dur=total_duration)
 
     return AlignmentResult(
         segments=segment_times,
         word_timestamps=word_timestamps,
-        srt_content=srt_content,
+        srt_content=caption_content,
         total_duration=total_duration,
     )
 
@@ -117,6 +123,7 @@ def _align_approximate(
     full_text: str,
     segment_labels: List[Tuple[int, str]],
     output_srt_path: Optional[Path],
+    output_ass_path: Optional[Path] = None,
 ) -> AlignmentResult:
     """Distribute timestamps evenly by character count."""
 
@@ -278,15 +285,71 @@ def get_image_switch_times(
     return [segment_start] + cut_points + [segment_end]
 
 
+_ASS_HEADER = """\
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 1
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Karaoke,Anton,72,&H0000FFFF,&H80FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,4,3,2,40,40,80,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+_WORDS_PER_LINE = 5
+
+
+def _generate_ass_karaoke(word_timestamps: List[dict]) -> str:
+    """Generate ASS karaoke subtitle file — each word lights up as it's spoken."""
+    lines = [_ASS_HEADER.rstrip()]
+    i = 0
+    words = word_timestamps
+
+    while i < len(words):
+        group = words[i : i + _WORDS_PER_LINE]
+        if not group:
+            break
+
+        line_start = group[0].get("start", 0.0)
+        line_end = group[-1].get("end", line_start + 1.0) + 0.15
+
+        parts = []
+        for w in group:
+            w_start = w.get("start", 0.0)
+            w_end = w.get("end", w_start + 0.15)
+            dur_cs = max(1, int((w_end - w_start) * 100))
+            parts.append(f"{{\\kf{dur_cs}}}{w.get('word', '').strip()}")
+
+        text = " ".join(parts)
+        start_str = _fmt_ass_time(line_start)
+        end_str = _fmt_ass_time(line_end)
+        lines.append(f"Dialogue: 0,{start_str},{end_str},Karaoke,,0,0,0,,{text}")
+
+        i += _WORDS_PER_LINE
+
+    return "\n".join(lines) + "\n"
+
+
+def _fmt_ass_time(seconds: float) -> str:
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    cs = int(round((seconds - int(seconds)) * 100))
+    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+
 def _generate_srt(word_timestamps: List[dict]) -> str:
-    """Generate SRT caption file from word-level timestamps (phrase grouping)."""
+    """Fallback SRT from word-level timestamps (used when no word data for ASS)."""
     lines = []
     idx = 1
     i = 0
     words = word_timestamps
 
     while i < len(words):
-        # Group 6-8 words per caption
         group = words[i : i + 7]
         if not group:
             break

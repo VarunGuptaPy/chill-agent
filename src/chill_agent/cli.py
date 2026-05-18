@@ -146,7 +146,8 @@ def dry_run(
     run_id: Optional[str] = typer.Option(None, "--run-id", help="Resume a previous dry-run by run ID"),
     stage: Optional[str] = typer.Option(
         None, "--stage",
-        help="Stage to resume from (ideation/script/tts/images/alignment/assembly/thumbnail/metadata). "
+        help="Stage to resume from (ideation/script/tts/reprompt/images/alignment/assembly/thumbnail/metadata). "
+             "Use 'reprompt' to regenerate image prompts from existing narration without redoing TTS. "
              "Auto-detected from cached files when --run-id is given.",
     ),
     mock_images: bool = typer.Option(False, "--mock-images", help="Use local placeholder images (free, for testing)"),

@@ -57,8 +57,18 @@ class DeepSeekClient:
 
         response = self._client.chat.completions.create(**kwargs)
 
+        choice = response.choices[0]
+        finish_reason = choice.finish_reason or "unknown"
+        if finish_reason == "length":
+            logger.warning(
+                "llm_output_truncated",
+                model=self._model,
+                max_tokens=max_tokens,
+                finish_reason=finish_reason,
+            )
+
         result = LLMResult(
-            content=response.choices[0].message.content or "",
+            content=choice.message.content or "",
             input_tokens=response.usage.prompt_tokens if response.usage else 0,
             output_tokens=response.usage.completion_tokens if response.usage else 0,
             model=self._model,
@@ -69,6 +79,7 @@ class DeepSeekClient:
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
             content_chars=len(result.content),
+            finish_reason=finish_reason,
         )
 
         return result

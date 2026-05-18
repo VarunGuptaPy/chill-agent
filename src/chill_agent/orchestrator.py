@@ -25,6 +25,7 @@ from chill_agent.stages.assembly import assemble_video
 from chill_agent.stages.ideation import ideate
 from chill_agent.stages.images import generate_images
 from chill_agent.stages.metadata import finalize_metadata
+from chill_agent.stages.reprompt import reprompt_images
 from chill_agent.stages.script import Script, generate_script
 from chill_agent.stages.thumbnail import make_thumbnail
 from chill_agent.stages.tts import synthesize_voice
@@ -32,6 +33,7 @@ from chill_agent.stages.upload import upload_video
 from chill_agent.utils.alerts import send_alert
 from chill_agent.utils.paths import (
     alignment_cache_path,
+    ass_path,
     full_audio_path,
     ideation_cache_path,
     run_dir,
@@ -43,7 +45,7 @@ logger = structlog.get_logger()
 
 # Ordered list of pipeline stages — used for resume-from logic
 _STAGE_ORDER: List[str] = [
-    "ideation", "script", "tts", "images",
+    "ideation", "script", "tts", "reprompt", "images",
     "alignment", "assembly", "thumbnail", "metadata", "upload",
 ]
 
@@ -123,6 +125,10 @@ def _validate_prereq_caches(output_root: Path, run_id: str, start_from: str) -> 
         audio_p = d / "audio" / "full_narration.wav"
         if not audio_p.exists():
             raise RuntimeError(f"Cannot resume from '{start_from}': audio/full_narration.wav not found in {d}")
+
+    # reprompt only needs script.json (reads narration, rewrites image_prompts)
+    if idx > _stage_idx("reprompt") and not script_p.exists():
+        raise RuntimeError(f"Cannot resume from '{start_from}': script.json not found in {d}")
 
 
 @dataclass
@@ -232,6 +238,21 @@ def make_one_video(
         )
         total_tts_chars += tts_result.total_chars
 
+        # ── Stage 3b: Reprompt ────────────────────────────────────────────────
+        # Regenerates image prompts from narration without touching audio.
+        # Runs automatically every time (it's fast — one LLM call per segment).
+        # When resuming from 'reprompt', force=True so stale prompts are replaced.
+        repo.update_run_stage(run_id, "reprompt")
+        _force_reprompt = (start_from_stage == "reprompt") or force
+        script = reprompt_images(
+            llm=llm,
+            script=script,
+            run_id=run_id,
+            output_root=output_root,
+            topic_brief=ideation.brief,
+            force=_force_reprompt,
+        )
+
         # ── Stage 4: Images ───────────────────────────────────────────────────
         repo.update_run_stage(run_id, "images")
         _skip_images = start_from_stage and _before("images", start_from_stage)
@@ -249,6 +270,7 @@ def make_one_video(
         repo.update_run_stage(run_id, "alignment")
         alignment_cache = alignment_cache_path(output_root, run_id)
         srt_file = srt_path(output_root, run_id)
+        ass_file = ass_path(output_root, run_id)
 
         if alignment_cache.exists() and not force:
             logger.info("alignment_cache_hit", run_id=run_id)
@@ -260,6 +282,7 @@ def make_one_video(
                 full_text=script.full_narration,
                 segment_labels=segment_labels,
                 output_srt_path=srt_file if settings.enable_captions else None,
+                output_ass_path=ass_file if settings.enable_captions else None,
             )
             _save_alignment_cache(alignment, alignment_cache)
 

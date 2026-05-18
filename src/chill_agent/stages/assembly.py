@@ -26,6 +26,7 @@ from chill_agent.media.music import pick_music_track
 from chill_agent.media.stick_figure import ensure_intro_frame, ensure_outro_frame
 from chill_agent.stages.tts import TTSResult
 from chill_agent.utils.paths import (
+    ass_path,
     final_video_path,
     srt_path,
     video_dir,
@@ -95,12 +96,15 @@ def assemble_video(
             mix_music(current, music_track, with_music, music_volume=0.12)
             current = with_music
 
-    srt_file = srt_path(output_root, run_id)
-    if enable_captions and srt_file.exists() and alignment.srt_content:
+    # Prefer ASS karaoke over plain SRT
+    _ass_file = ass_path(output_root, run_id)
+    _srt_file = srt_path(output_root, run_id)
+    caption_file = _ass_file if _ass_file.exists() else (_srt_file if _srt_file.exists() else None)
+    if enable_captions and caption_file and alignment.srt_content:
         with_captions = video_dir(output_root, run_id) / "with_captions.mp4"
         font = _FONT_PATH if _FONT_PATH.exists() else None
-        logger.info("assembly_burn_captions")
-        burn_captions(current, srt_file, with_captions, font_path=font)
+        logger.info("assembly_burn_captions", format=caption_file.suffix)
+        burn_captions(current, caption_file, with_captions, font_path=font)
         current = with_captions
 
     shutil.copy2(str(current), str(final_path))
