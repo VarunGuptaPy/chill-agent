@@ -1,15 +1,26 @@
-"""Generate intro and outro stick figure frames (created once, reused for every video)."""
+"""Generate intro and outro frames (created once, reused for every video).
+
+Intro: Gemini-generated character image (falls back to PIL stick figure).
+Outro: PIL stick figure with subscribe CTA.
+"""
 
 from __future__ import annotations
 
+import os
 import textwrap
 from pathlib import Path
 from typing import Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
-_INTRO_TEXT = "Let's get right into it."
 _OUTRO_TEXT = "That's all for this video, I will be making similar\nkind of video in future.\nSubscribe to stay updated."
+
+_INTRO_PROMPT = (
+    "A chill, relaxed cartoon character with a warm smile and friendly wave, "
+    "flat cartoon illustration style, bold black outlines, vibrant limited color palette, "
+    "centered on a warm cream background, clean composition, flat shading no gradients, "
+    "quirky charming expression, 16:9 aspect ratio, no text"
+)
 
 _SKIN = (180, 120, 60)       # warm brown skin
 _OUTLINE = (30, 30, 30)      # near-black for all lines/outlines
@@ -176,11 +187,83 @@ def _render_frame(text: str, output_path: Path, accent_last: bool = False) -> No
     img.save(str(output_path), "PNG")
 
 
+def _generate_intro_frame_gemini(output_path: Path) -> bool:
+    """Try to generate the intro frame via Vertex AI. Returns True on success."""
+    key_file = os.environ.get("VERTEX_AI_KEY_FILE", "keys/dubmanandyoutube.json")
+    project = os.environ.get("VERTEX_AI_PROJECT", "dubmanandyoutube")
+    location = os.environ.get("VERTEX_AI_LOCATION", "us-central1")
+    model = os.environ.get("GEMINI_IMAGE_MODEL", "imagen-3.0-generate-001")
+
+    if not Path(key_file).exists():
+        return False
+    try:
+        from google import genai
+        from google.genai import types
+        from google.oauth2 import service_account
+
+        credentials = service_account.Credentials.from_service_account_file(
+            key_file,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+        client = genai.Client(
+            vertexai=True,
+            project=project,
+            location=location,
+            credentials=credentials,
+        )
+        if "imagen" in model.lower():
+            response = client.models.generate_images(
+                model=model,
+                prompt=_INTRO_PROMPT,
+                config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio="16:9"),
+            )
+            if response.generated_images:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(response.generated_images[0].image.image_bytes)
+                return True
+        else:
+            response = client.models.generate_content(
+                model=model,
+                contents=_INTRO_PROMPT,
+                config=types.GenerateContentConfig(
+                    response_modalities=["image", "text"],
+                    image_config=types.ImageConfig(aspect_ratio="16:9"),
+                ),
+            )
+            if response.candidates and response.candidates[0].content.parts:
+                for part in response.candidates[0].content.parts:
+                    if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                        output_path.write_bytes(part.inline_data.data)
+                        return True
+    except Exception:
+        pass
+    return False
+
+
 def ensure_intro_frame(assets_dir: Path) -> Path:
-    """Return path to intro frame, generating it if it doesn't exist."""
+    """Return path to intro frame, generating it if it doesn't exist.
+
+    Tries Gemini image generation first; falls back to PIL stick figure.
+    """
     path = assets_dir / "intro_frame.png"
-    if not path.exists():
-        _render_frame(_INTRO_TEXT, path, accent_last=False)
+    if path.exists():
+        return path
+
+    if _generate_intro_frame_gemini(path):
+        return path
+
+    # Fallback: plain cream background with a simple welcome graphic
+    img = Image.new("RGB", (_W, _H), color=_BG)
+    draw = ImageDraw.Draw(img)
+    for x in range(0, _W, 60):
+        draw.line([(x, 0), (x, _H)], fill=(235, 230, 218), width=1)
+    for y in range(0, _H, 60):
+        draw.line([(0, y), (_W, y)], fill=(235, 230, 218), width=1)
+    fig_cx, fig_cy = _W // 2, _H // 2 + 150
+    _draw_stick_figure(draw, fig_cx, fig_cy, scale=1.0)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(str(path), "PNG")
     return path
 
 
@@ -192,5 +275,4 @@ def ensure_outro_frame(assets_dir: Path) -> Path:
     return path
 
 
-INTRO_TEXT = _INTRO_TEXT
 OUTRO_TEXT = "That's all for this video, I will be making similar kind of video in future. Subscribe to stay updated."

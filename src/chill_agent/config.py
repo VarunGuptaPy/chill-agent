@@ -31,14 +31,17 @@ class Settings(BaseSettings):
 
     # Images
     image_provider: str = "gemini"
-    pollinations_api_key: str = ""   # free sk_ key from enter.pollinations.ai (removes rate limits)
-    pollinations_model: str = "gptimage-1"  # flux | turbo | gptimage-1 | flux-pro | gptimage-large
+    pollinations_api_key: str = ""
+    pollinations_model: str = "gptimage-1"
     image_width: int = 1920
     image_height: int = 1080
+    # Vertex AI (primary image provider)
+    vertex_ai_key_file: str = "keys/dubmanandyoutube.json"
+    vertex_ai_project: str = "dubmanandyoutube"
+    vertex_ai_location: str = "us-central1"
+    gemini_image_model: str = "imagen-3.0-generate-001"
+    image_rate_limit_seconds: float = 0.0
     # Fallback providers
-    google_ai_api_key: str = ""
-    gemini_image_model: str = "gemini-2.5-flash-preview-image-generation"
-    image_rate_limit_seconds: float = 6.0  # Gemini free tier: ~10 RPM
     replicate_api_token: str = ""
     flux_model: str = "black-forest-labs/flux-schnell"
     nsfw_check_enabled: bool = True
@@ -60,6 +63,7 @@ class Settings(BaseSettings):
     # Storage
     output_dir: Path = Path("./outputs")
     db_url: str = "sqlite:///./chill_agent.db"
+    cleanup_after_upload: bool = True  # delete run artifacts after successful upload to save disk
 
     # Mode
     warmup_mode: bool = False

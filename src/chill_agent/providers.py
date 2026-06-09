@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import structlog
@@ -67,12 +68,15 @@ def build_image_provider(settings: Settings):
     elif provider == "gemini":
         from chill_agent.services.image.gemini import GeminiImageClient
 
-        if not settings.google_ai_api_key:
+        if not Path(settings.vertex_ai_key_file).exists():
             raise ValueError(
-                "GOOGLE_AI_API_KEY is not set. Get one free at https://aistudio.google.com/apikey"
+                f"Vertex AI key file not found: {settings.vertex_ai_key_file}. "
+                "Place your service account JSON at keys/dubmanandyoutube.json"
             )
         return GeminiImageClient(
-            api_key=settings.google_ai_api_key,
+            key_file=settings.vertex_ai_key_file,
+            project=settings.vertex_ai_project,
+            location=settings.vertex_ai_location,
             model=settings.gemini_image_model,
             rate_limit_seconds=settings.image_rate_limit_seconds,
         )

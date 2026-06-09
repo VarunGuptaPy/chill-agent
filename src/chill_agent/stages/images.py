@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +43,11 @@ _NSFW_BLOCKLIST = [
 ]
 
 _SAFE_FALLBACK_PROMPT = "stick figure character standing and looking curious, simple background"
+
+# Global rate-limit bottleneck: 1 image per IMAGE_RATE_LIMIT_SECONDS
+IMAGE_RATE_LIMIT_SECONDS = 65
+_rate_lock = threading.Lock()
+_last_generate_time: float = 0.0
 
 
 @dataclass
@@ -193,4 +200,13 @@ def _generate_one(
     width: int,
     height: int,
 ) -> ImageResult:
-    return provider.generate(prompt=prompt, output_path=output_path, width=width, height=height)
+    global _last_generate_time
+    with _rate_lock:
+        elapsed = time.monotonic() - _last_generate_time
+        wait = IMAGE_RATE_LIMIT_SECONDS - elapsed
+        if wait > 0:
+            logger.debug("image_rate_limit_wait", seconds=round(wait, 1))
+            time.sleep(wait)
+        result = provider.generate(prompt=prompt, output_path=output_path, width=width, height=height)
+        _last_generate_time = time.monotonic()
+    return result

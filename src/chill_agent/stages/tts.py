@@ -1,8 +1,7 @@
 """Stage 3: TTS — synthesize narration per segment, stitch with silence.
 
-Intro ("Let's get right into it.") and outro are synthesized as separate
-fixed-text clips and cached as assets so they are only generated once per
-voice_id change.
+Outro is synthesized as a fixed-text clip cached in assets/.
+Intro is a silent visual beat (Gemini-generated image); no TTS for it.
 """
 
 from __future__ import annotations
@@ -14,7 +13,9 @@ from typing import List, Optional
 import structlog
 
 from chill_agent.media.ffmpeg_ops import concat_audio_files_with_silence
-from chill_agent.media.stick_figure import INTRO_TEXT, OUTRO_TEXT
+from chill_agent.media.stick_figure import OUTRO_TEXT
+
+_INTRO_VISUAL_DURATION = 2.5  # seconds — silent Gemini character frame before narration
 from chill_agent.services.tts.base import AudioResult, TTSProvider
 from chill_agent.stages.script import Script
 from chill_agent.utils.paths import audio_dir, full_audio_path, segment_audio_path
@@ -44,28 +45,21 @@ def _audio_duration(path: Path) -> float:
         return path.stat().st_size / 16000.0
 
 
-def _ensure_intro_outro_audio(
+def _ensure_outro_audio(
     tts: TTSProvider,
     voice_id: str,
     assets_dir: Path,
     force: bool = False,
-) -> tuple[Path, float, Path, float]:
-    """Synthesize intro and outro audio into assets/ and return (intro_path, intro_dur, outro_path, outro_dur).
+) -> tuple[Path, float]:
+    """Synthesize outro audio into assets/ and return (outro_path, outro_dur).
 
-    Files are cached — only re-synthesized when missing or force=True.
-    Named with voice_id prefix so swapping voices regenerates them automatically.
+    Cached — only re-synthesized when missing or force=True.
+    Named with voice_id prefix so swapping voices regenerates automatically.
     """
     safe_vid = "".join(c if c.isalnum() else "_" for c in (voice_id or "default"))[:32]
-    intro_path = assets_dir / f"intro_{safe_vid}.wav"
     outro_path = assets_dir / f"outro_{safe_vid}.wav"
 
     assets_dir.mkdir(parents=True, exist_ok=True)
-
-    if not intro_path.exists() or force:
-        logger.info("tts_synthesizing_intro")
-        tts.synthesize(text=INTRO_TEXT, voice_id=voice_id, output_path=intro_path)
-    else:
-        logger.info("tts_intro_cache_hit", path=str(intro_path))
 
     if not outro_path.exists() or force:
         logger.info("tts_synthesizing_outro")
@@ -73,7 +67,7 @@ def _ensure_intro_outro_audio(
     else:
         logger.info("tts_outro_cache_hit", path=str(outro_path))
 
-    return intro_path, _audio_duration(intro_path), outro_path, _audio_duration(outro_path)
+    return outro_path, _audio_duration(outro_path)
 
 
 def synthesize_voice(
@@ -96,11 +90,10 @@ def synthesize_voice(
         logger.info("tts_cache_hit", full_audio=str(full_audio))
         return _load_cached(tts, script, run_id, output_root, full_audio, voice_id)
 
-    # Intro/outro — synthesized into assets/ dir so they persist across runs
+    # Outro only — synthesized into assets/ dir so it persists across runs
+    # Intro is a silent visual beat (no TTS)
     assets_dir = output_root.parent / "assets" / "audio"
-    intro_path, intro_dur, outro_path, outro_dur = _ensure_intro_outro_audio(
-        tts, voice_id, assets_dir, force=False
-    )
+    outro_path, outro_dur = _ensure_outro_audio(tts, voice_id, assets_dir, force=False)
 
     # Per-segment synthesis
     seg_paths: List[Path] = []
@@ -120,9 +113,10 @@ def synthesize_voice(
         total_chars += len(seg.narration)
         seg_durations.append(_audio_duration(out_path))
 
-    # Stitch: intro + all segments + outro with 0.8s silence between
+    # Stitch: all segments + outro with 0.8s silence between
+    # (intro is silent visual — audio starts with segment 0)
     logger.info("tts_stitching", segments=len(seg_paths))
-    all_parts = [intro_path] + seg_paths + [outro_path]
+    all_parts = seg_paths + [outro_path]
     concat_audio_files_with_silence(
         audio_paths=all_parts,
         output_path=full_audio,
@@ -130,12 +124,12 @@ def synthesize_voice(
     )
 
     silence_gaps = len(all_parts) - 1
-    total_duration = intro_dur + sum(seg_durations) + outro_dur + 0.8 * silence_gaps
+    total_duration = sum(seg_durations) + outro_dur + 0.8 * silence_gaps
 
     logger.info(
         "tts_done",
         segments=len(seg_paths),
-        intro_duration=round(intro_dur, 1),
+        intro_duration=_INTRO_VISUAL_DURATION,
         outro_duration=round(outro_dur, 1),
         total_duration=round(total_duration, 1),
         total_chars=total_chars,
@@ -147,9 +141,9 @@ def synthesize_voice(
         total_duration_seconds=total_duration,
         total_chars=total_chars,
         per_segment_durations=seg_durations,
-        intro_duration=intro_dur,
+        intro_duration=_INTRO_VISUAL_DURATION,
         outro_duration=outro_dur,
-        intro_audio_path=intro_path,
+        intro_audio_path=None,
         outro_audio_path=outro_path,
     )
 
@@ -179,13 +173,9 @@ def _load_cached(
     except Exception:
         total_duration = sum(seg_durations)
 
-    # Attempt to load intro/outro durations from cached asset files
     assets_dir = output_root.parent / "assets" / "audio"
     safe_vid = "".join(c if c.isalnum() else "_" for c in (voice_id or "default"))[:32]
-    intro_path = assets_dir / f"intro_{safe_vid}.wav"
     outro_path = assets_dir / f"outro_{safe_vid}.wav"
-
-    intro_dur = _audio_duration(intro_path) if intro_path.exists() else 2.0
     outro_dur = _audio_duration(outro_path) if outro_path.exists() else 4.0
 
     return TTSResult(
@@ -194,8 +184,8 @@ def _load_cached(
         total_duration_seconds=total_duration,
         total_chars=total_chars,
         per_segment_durations=seg_durations,
-        intro_duration=intro_dur,
+        intro_duration=_INTRO_VISUAL_DURATION,
         outro_duration=outro_dur,
-        intro_audio_path=intro_path if intro_path.exists() else None,
+        intro_audio_path=None,
         outro_audio_path=outro_path if outro_path.exists() else None,
     )

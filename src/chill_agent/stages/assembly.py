@@ -1,9 +1,9 @@
 """Stage 6: Video assembly — Ken Burns clips + narration + music + optional captions.
 
 Video layout:
-  [intro clip: brown stick figure "Let's get right into it."]
+  [intro clip: Gemini-generated character — 2.5s silent visual beat]
   [segment clips: Ken Burns pan/zoom over generated images]
-  [outro clip: brown stick figure "That's all for this video..."]
+  [outro clip: stick figure "That's all for this video..."]
 """
 
 from __future__ import annotations

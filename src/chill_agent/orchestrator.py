@@ -7,6 +7,7 @@ if a stage already completed (artifacts exist on disk), it's skipped unless --fo
 from __future__ import annotations
 
 import json
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -347,6 +348,8 @@ def make_one_video(
                 youtube_video_id=youtube_video_id,
                 scheduled_publish_at=upload_result.scheduled_publish_at,
             )
+            if settings.cleanup_after_upload:
+                _cleanup_run_dir(run_output, run_id)
         elif dry_run:
             logger.info("pipeline_dry_run_skip_upload", title=script.title)
 
@@ -404,6 +407,29 @@ def make_one_video(
             error=str(e),
         )
         raise
+
+
+def _cleanup_run_dir(run_output: Path, run_id: str) -> None:
+    """Delete all intermediate artifacts after a successful upload.
+
+    Keeps script.json for reference; nukes images/, audio/, and the final MP4
+    since everything is already on YouTube and recorded in the DB.
+    """
+    heavy = ["images", "audio"]
+    for subdir in heavy:
+        target = run_output / subdir
+        if target.exists():
+            shutil.rmtree(target)
+            logger.info("cleanup_deleted_dir", run_id=run_id, path=str(target))
+
+    for filename in ["final.mp4", "thumbnail_a.jpg", "thumbnail_b.jpg",
+                     "thumbnail_raw.png", "alignment.json", "narration.srt", "narration.ass"]:
+        f = run_output / filename
+        if f.exists():
+            f.unlink()
+            logger.info("cleanup_deleted_file", run_id=run_id, file=filename)
+
+    logger.info("cleanup_complete", run_id=run_id)
 
 
 def _estimate_cost(

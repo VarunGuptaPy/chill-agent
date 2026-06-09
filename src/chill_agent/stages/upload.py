@@ -92,8 +92,13 @@ def upload_video(
 
 
 def _pick_publish_time(repo: Repository, publish_hours: List[int]) -> datetime:
-    """Find the next available publish slot that isn't already taken."""
+    """Find the next available publish slot that isn't already taken.
+
+    Requires at least 90 minutes of lead time so the pipeline always has
+    enough time to finish encoding and upload before the video goes live.
+    """
     now = datetime.now(timezone.utc)
+    earliest = now + timedelta(minutes=90)
     scheduled = set(repo.scheduled_publish_times())
 
     # Search up to 7 days out
@@ -102,7 +107,7 @@ def _pick_publish_time(repo: Repository, publish_hours: List[int]) -> datetime:
             candidate = (now + timedelta(days=day_offset)).replace(
                 hour=hour, minute=0, second=0, microsecond=0, tzinfo=timezone.utc
             )
-            if candidate <= now:
+            if candidate <= earliest:
                 continue
             # Check if this slot is taken (within ±30 min)
             taken = any(
