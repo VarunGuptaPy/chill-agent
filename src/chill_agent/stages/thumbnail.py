@@ -11,9 +11,6 @@ logger = structlog.get_logger()
 
 _FONT_PATH = Path(__file__).parent.parent.parent.parent / "assets" / "fonts" / "Anton-Regular.ttf"
 
-# Top gradient bar covers top 30% of image for text readability
-_GRADIENT_HEIGHT_RATIO = 0.30
-
 
 def make_thumbnail(
     raw_image_path: Path,
@@ -53,66 +50,62 @@ def _render_thumbnail(
     variant: str = "a",
     target_size: Tuple[int, int] = (1280, 720),
 ) -> None:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
-    img = Image.open(str(source)).convert("RGB")
-    img = img.resize(target_size, Image.LANCZOS)
+    W, H = target_size
+    canvas = Image.new("RGB", (W, H), color=(255, 255, 255))
 
-    w, h = target_size
-    gradient_h = int(h * _GRADIENT_HEIGHT_RATIO)
+    # Layout: text zone on left (45%), image on right (50%), small margins
+    # variant "b" flips: image on left, text on right
+    img_w = int(W * 0.50)
+    img_h = int(H * 0.78)
+    padding = 30
 
-    # Draw semi-transparent dark gradient bar at top
-    overlay = Image.new("RGBA", (w, gradient_h), (0, 0, 0, 0))
-    draw_ov = ImageDraw.Draw(overlay)
-    for y in range(gradient_h):
-        # Opacity: 180 at top, 0 at bottom (fade out)
-        alpha = int(180 * (1.0 - y / gradient_h))
-        draw_ov.line([(0, y), (w, y)], fill=(0, 0, 0, alpha))
+    source_img = Image.open(str(source)).convert("RGB")
+    source_img.thumbnail((img_w, img_h), Image.LANCZOS)
+    actual_w, actual_h = source_img.size
 
-    img_rgba = img.convert("RGBA")
-    img_rgba.paste(overlay, (0, 0), overlay)
-    img = img_rgba.convert("RGB")
+    if variant == "b":
+        img_x = padding
+        text_zone_x = img_w + padding * 2
+    else:
+        img_x = W - actual_w - padding
+        text_zone_x = padding
 
-    draw = ImageDraw.Draw(img)
+    img_y = (H - actual_h) // 2
+    canvas.paste(source_img, (img_x, img_y))
 
-    # Auto-scale font to fit within top gradient area
-    max_font_size = int(gradient_h * 0.55)
-    font_size = max(28, min(max_font_size, 90))
+    draw = ImageDraw.Draw(canvas)
+    text_zone_w = W - img_w - padding * 3
+
+    # Start font at 72, shrink until text fits in text zone
+    font_size = 72
     font = _load_font(font_size)
-
-    # Shrink font until text fits in 90% of width
-    max_text_width = int(w * 0.90)
-    while font_size > 24:
-        lines = _wrap_text(text, font, draw, max_width=max_text_width)
-        line_height = font_size + 8
+    while font_size > 28:
+        lines = _wrap_text(text, font, draw, max_width=text_zone_w)
+        line_height = font_size + 10
         total_h = len(lines) * line_height
-        if total_h <= gradient_h - 10:
+        if total_h <= H - padding * 2:
             break
         font_size -= 4
         font = _load_font(font_size)
 
-    lines = _wrap_text(text, font, draw, max_width=max_text_width)
-    line_height = font_size + 8
-    total_text_height = len(lines) * line_height
-
-    # Center text horizontally; place in top gradient zone
-    # variant "b" shifts text slightly right for A/B variety
-    y_start = max(8, (gradient_h - total_text_height) // 2)
+    lines = _wrap_text(text, font, draw, max_width=text_zone_w)
+    line_height = font_size + 10
+    total_text_h = len(lines) * line_height
+    y = (H - total_text_h) // 2
 
     for line in lines:
         try:
             line_w = draw.textlength(line, font=font)
         except Exception:
             line_w = len(line) * font_size * 0.6
-        if variant == "b":
-            x = min(int(w * 0.55), w - int(line_w) - 20)
-        else:
-            x = max(20, (w - int(line_w)) // 2)
-        _draw_text_with_stroke(draw, line, x, y_start, font, fill="white", stroke="black", stroke_width=3)
-        y_start += line_height
+        x = text_zone_x + max(0, (text_zone_w - int(line_w)) // 2)
+        _draw_text_with_stroke(draw, line, x, y, font, fill=(20, 20, 20), stroke=(200, 200, 200), stroke_width=2)
+        y += line_height
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    img.save(str(output), "JPEG", quality=95)
+    canvas.save(str(output), "JPEG", quality=95)
 
 
 def _load_font(size: int):

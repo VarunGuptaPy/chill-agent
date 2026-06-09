@@ -241,38 +241,27 @@ def _generate_intro_frame_gemini(output_path: Path) -> bool:
     return False
 
 
+_CHILL_DUDE_IMAGE = Path(__file__).parent.parent.parent.parent / "assets" / "chill_dude.png"
+
+
+def _get_chill_dude(target: Path) -> Path:
+    """Return the static chill dude image, scaled to 1920x1080."""
+    if target.exists():
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.open(_CHILL_DUDE_IMAGE).convert("RGB")
+    img = img.resize((_W, _H), Image.LANCZOS)
+    img.save(str(target), "PNG")
+    return target
+
+
 def ensure_intro_frame(assets_dir: Path) -> Path:
-    """Return path to intro frame, generating it if it doesn't exist.
-
-    Tries Gemini image generation first; falls back to PIL stick figure.
-    """
-    path = assets_dir / "intro_frame.png"
-    if path.exists():
-        return path
-
-    if _generate_intro_frame_gemini(path):
-        return path
-
-    # Fallback: plain cream background with a simple welcome graphic
-    img = Image.new("RGB", (_W, _H), color=_BG)
-    draw = ImageDraw.Draw(img)
-    for x in range(0, _W, 60):
-        draw.line([(x, 0), (x, _H)], fill=(235, 230, 218), width=1)
-    for y in range(0, _H, 60):
-        draw.line([(0, y), (_W, y)], fill=(235, 230, 218), width=1)
-    fig_cx, fig_cy = _W // 2, _H // 2 + 150
-    _draw_stick_figure(draw, fig_cx, fig_cy, scale=1.0)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(str(path), "PNG")
-    return path
+    return _get_chill_dude(assets_dir / "intro_frame.png")
 
 
 def ensure_outro_frame(assets_dir: Path) -> Path:
-    """Return path to outro frame, generating it if it doesn't exist."""
-    path = assets_dir / "outro_frame.png"
-    if not path.exists():
-        _render_frame(_OUTRO_TEXT, path, accent_last=True)
-    return path
+    return _get_chill_dude(assets_dir / "outro_frame.png")
 
 
 OUTRO_TEXT = "That's all for this video, I will be making similar kind of video in future. Subscribe to stay updated."
+INTRO_TEXT = "Let's get right into it."
