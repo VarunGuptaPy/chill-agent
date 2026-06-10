@@ -145,10 +145,53 @@ class YouTubeClient:
         return video_id
 
     def set_thumbnail(self, video_id: str, thumbnail_path: Path) -> None:
+        """Upload thumbnail for a video. Retries with backoff — YouTube often
+        needs a few seconds after video upload before accepting thumbnails."""
+        import time
+        from googleapiclient.errors import HttpError
+
         service = self._get_service()
         media = MediaFileUpload(str(thumbnail_path), mimetype="image/jpeg")
-        service.thumbnails().set(videoId=video_id, media_body=media).execute()
-        logger.info("youtube_thumbnail_set", video_id=video_id)
+
+        backoff = (5.0, 15.0, 30.0)
+        last_exc: Exception | None = None
+        for attempt, wait in enumerate(backoff, start=1):
+            try:
+                service.thumbnails().set(videoId=video_id, media_body=media).execute()
+                logger.info("youtube_thumbnail_set", video_id=video_id, attempt=attempt)
+                return
+            except HttpError as exc:
+                last_exc = exc
+                # 403 = channel not eligible for custom thumbnails — pointless to retry
+                if exc.resp.status == 403:
+                    logger.error(
+                        "youtube_thumbnail_not_eligible",
+                        video_id=video_id,
+                        error=str(exc),
+                        hint="Channel needs 1000 subs or verification for custom thumbnails",
+                    )
+                    raise
+                logger.warning(
+                    "youtube_thumbnail_retry",
+                    video_id=video_id,
+                    attempt=attempt,
+                    wait_seconds=wait,
+                    status=exc.resp.status,
+                    error=str(exc),
+                )
+                time.sleep(wait)
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    "youtube_thumbnail_retry",
+                    video_id=video_id,
+                    attempt=attempt,
+                    wait_seconds=wait,
+                    error=str(exc),
+                )
+                time.sleep(wait)
+
+        raise last_exc  # type: ignore[misc]
 
     def get_video_stats(self, video_ids: List[str]) -> List[dict]:
         """Fetch view/like/comment stats for a list of video IDs."""

@@ -70,12 +70,21 @@ def upload_video(
         category_id=metadata.category_id,
     )
 
-    # Upload thumbnail
+    # Upload thumbnail — non-fatal: video is already uploaded, don't abort on failure
+    quota_used = 1600
     if thumbnail_a_path.exists():
-        youtube.set_thumbnail(video_id, thumbnail_a_path)
-        quota_used = 1600 + 50
+        try:
+            youtube.set_thumbnail(video_id, thumbnail_a_path)
+            quota_used += 50
+        except Exception as exc:
+            logger.warning(
+                "upload_thumbnail_failed",
+                video_id=video_id,
+                error=str(exc),
+                hint="Thumbnail can be set manually in YouTube Studio",
+            )
     else:
-        quota_used = 1600
+        logger.warning("upload_thumbnail_missing", path=str(thumbnail_a_path))
 
     logger.info(
         "upload_complete",
