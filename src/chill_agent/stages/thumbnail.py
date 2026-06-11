@@ -32,12 +32,8 @@ def make_thumbnail(
         logger.info("thumbnail_cache_hit")
         return path_a, path_b
 
-    # Get 3-5 bold words from title for overlay
-    words = title.split()
-    overlay_text = " ".join(words[:5]).upper()
-
-    _render_thumbnail(raw_image_path, overlay_text, path_a, variant="a")
-    _render_thumbnail(raw_image_path, overlay_text, path_b, variant="b")
+    _render_thumbnail(raw_image_path, title, path_a, text_align="center")
+    _render_thumbnail(raw_image_path, title, path_b, text_align="left")
 
     logger.info("thumbnails_created", a=str(path_a), b=str(path_b))
     return path_a, path_b
@@ -45,9 +41,9 @@ def make_thumbnail(
 
 def _render_thumbnail(
     source: Path,
-    text: str,
+    title: str,
     output: Path,
-    variant: str = "a",
+    text_align: str = "center",
     target_size: Tuple[int, int] = (1280, 720),
 ) -> None:
     from PIL import Image, ImageDraw
@@ -55,54 +51,75 @@ def _render_thumbnail(
     W, H = target_size
     canvas = Image.new("RGB", (W, H), color=(255, 255, 255))
 
-    # Layout: text zone on left (45%), image on right (50%), small margins
-    # variant "b" flips: image on left, text on right
-    img_w = int(W * 0.50)
-    img_h = int(H * 0.78)
-    padding = 30
+    # --- Text zone: top 32% of canvas ---
+    text_zone_h = int(H * 0.32)
+    text_padding = 40
 
-    source_img = Image.open(str(source)).convert("RGB")
-    source_img.thumbnail((img_w, img_h), Image.LANCZOS)
-    actual_w, actual_h = source_img.size
+    # --- Image zone: bottom 68% of canvas ---
+    img_zone_y = text_zone_h
+    img_zone_h = H - text_zone_y
+    img_zone_w = W
 
-    if variant == "b":
-        img_x = padding
-        text_zone_x = img_w + padding * 2
-    else:
-        img_x = W - actual_w - padding
-        text_zone_x = padding
+    source_img = Image.open(str(source)).convert("RGBA")
 
-    img_y = (H - actual_h) // 2
-    canvas.paste(source_img, (img_x, img_y))
+    # Scale image to fit bottom zone, preserve aspect ratio
+    src_w, src_h = source_img.size
+    scale = min(img_zone_w / src_w, img_zone_h / src_h)
+    new_w = int(src_w * scale)
+    new_h = int(src_h * scale)
+    source_img = source_img.resize((new_w, new_h), Image.LANCZOS)
+
+    # If image has white/near-white background, paste directly; otherwise center it
+    img_x = (W - new_w) // 2
+    img_y = img_zone_y + (img_zone_h - new_h) // 2
+
+    # Composite onto white canvas (handles RGBA transparency)
+    bg = Image.new("RGBA", (W, H), (255, 255, 255, 255))
+    bg.paste(source_img, (img_x, img_y), source_img if source_img.mode == "RGBA" else None)
+    canvas = bg.convert("RGB")
 
     draw = ImageDraw.Draw(canvas)
-    text_zone_w = W - img_w - padding * 3
 
-    # Start font at 72, shrink until text fits in text zone
-    font_size = 72
+    # --- Draw title text in text zone ---
+    available_w = W - text_padding * 2
+
+    # Find font size that fits within text zone height
+    font_size = 90
     font = _load_font(font_size)
     while font_size > 28:
-        lines = _wrap_text(text, font, draw, max_width=text_zone_w)
-        line_height = font_size + 10
+        lines = _wrap_text(title.upper(), font, draw, max_width=available_w)
+        line_height = int(font_size * 1.15)
         total_h = len(lines) * line_height
-        if total_h <= H - padding * 2:
+        if total_h <= text_zone_h - text_padding:
             break
         font_size -= 4
         font = _load_font(font_size)
 
-    lines = _wrap_text(text, font, draw, max_width=text_zone_w)
-    line_height = font_size + 10
+    lines = _wrap_text(title.upper(), font, draw, max_width=available_w)
+    line_height = int(font_size * 1.15)
     total_text_h = len(lines) * line_height
-    y = (H - total_text_h) // 2
+
+    # Center text vertically within text zone
+    start_y = (text_zone_h - total_text_h) // 2
 
     for line in lines:
         try:
-            line_w = draw.textlength(line, font=font)
+            line_w = int(draw.textlength(line, font=font))
         except Exception:
-            line_w = len(line) * font_size * 0.6
-        x = text_zone_x + max(0, (text_zone_w - int(line_w)) // 2)
-        _draw_text_with_stroke(draw, line, x, y, font, fill=(20, 20, 20), stroke=(200, 200, 200), stroke_width=2)
-        y += line_height
+            line_w = int(len(line) * font_size * 0.6)
+
+        if text_align == "center":
+            x = (W - line_w) // 2
+        else:
+            x = text_padding
+
+        _draw_text_with_stroke(
+            draw, line, x, start_y, font,
+            fill=(15, 15, 15),
+            stroke=(255, 255, 255),
+            stroke_width=3,
+        )
+        start_y += line_height
 
     output.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(str(output), "JPEG", quality=95)
@@ -117,7 +134,6 @@ def _load_font(size: int):
         except Exception:
             pass
 
-    # Try system fonts
     for path in [
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
@@ -143,7 +159,7 @@ def _wrap_text(text: str, font, draw, max_width: int) -> list:
         try:
             w = draw.textlength(test_line, font=font)
         except Exception:
-            w = len(test_line) * 50  # rough fallback
+            w = len(test_line) * 50
         if w <= max_width:
             current.append(word)
         else:
@@ -154,7 +170,7 @@ def _wrap_text(text: str, font, draw, max_width: int) -> list:
     if current:
         lines.append(" ".join(current))
 
-    return lines[:3]  # max 3 lines on thumbnail
+    return lines[:3]
 
 
 def _draw_text_with_stroke(
@@ -163,15 +179,12 @@ def _draw_text_with_stroke(
     x: int,
     y: int,
     font,
-    fill: str,
-    stroke: str,
+    fill,
+    stroke,
     stroke_width: int,
 ) -> None:
-    # Draw stroke by offsetting in 8 directions
     for dx in range(-stroke_width, stroke_width + 1):
         for dy in range(-stroke_width, stroke_width + 1):
             if dx != 0 or dy != 0:
                 draw.text((x + dx, y + dy), text, font=font, fill=stroke)
-
-    # Draw main text
     draw.text((x, y), text, font=font, fill=fill)

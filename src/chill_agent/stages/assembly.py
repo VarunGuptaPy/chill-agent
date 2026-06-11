@@ -17,6 +17,7 @@ import structlog
 from chill_agent.media.alignment import AlignmentResult
 from chill_agent.media.ffmpeg_ops import (
     build_ken_burns_clip,
+    build_number_card_clip,
     burn_captions,
     concat_video_clips,
     mix_music,
@@ -41,6 +42,9 @@ _ASSETS_DIR = Path(__file__).parent.parent.parent.parent / "assets"
 _TARGET_CLIP_SECS = 10.0
 _MIN_CLIP_SECS = 4.0
 _MAX_CLIP_SECS = 20.0
+
+# Duration of the number transition card shown before each segment
+_NUMBER_CARD_SECS = 1.5
 
 
 def assemble_video(
@@ -149,20 +153,36 @@ def _build_all_clips(
         if seg_duration < 1.0:
             seg_duration = 5.0
 
+        # Number card — deduct its duration from the segment budget so total video
+        # duration stays in sync with the audio track.
+        card_dur = min(_NUMBER_CARD_SECS, seg_duration * 0.08)
+        num_card_path = vdir / f"clip_num_{seg_num:02d}.mp4"
+        if not num_card_path.exists() or force:
+            logger.info("assembly_build_number_card", seg_num=seg_num, duration=round(card_dur, 2))
+            build_number_card_clip(seg_num, num_card_path, duration=card_dur)
+        else:
+            logger.debug("assembly_number_card_cache_hit", seg_num=seg_num)
+        all_clips.append(num_card_path)
+
+        # Remaining duration for Ken Burns clips
+        remaining = seg_duration - card_dur
+
         n_unique = len(img_paths)
-        base_clip_dur = seg_duration / n_unique
+        base_clip_dur = remaining / n_unique
         if base_clip_dur <= _MAX_CLIP_SECS:
             n_clips = n_unique
             clip_duration = max(_MIN_CLIP_SECS, base_clip_dur)
         else:
-            n_clips = max(n_unique, round(seg_duration / _TARGET_CLIP_SECS))
-            clip_duration = seg_duration / n_clips
+            n_clips = max(n_unique, round(remaining / _TARGET_CLIP_SECS))
+            clip_duration = remaining / n_clips
             clip_duration = max(_MIN_CLIP_SECS, min(_MAX_CLIP_SECS, clip_duration))
 
         logger.info(
             "assembly_segment_clips",
             seg_num=seg_num,
             seg_duration=round(seg_duration, 2),
+            card_dur=round(card_dur, 2),
+            remaining=round(remaining, 2),
             n_unique_images=n_unique,
             n_clips=n_clips,
             clip_duration=round(clip_duration, 2),

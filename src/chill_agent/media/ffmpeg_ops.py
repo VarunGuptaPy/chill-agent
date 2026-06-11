@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -11,6 +12,7 @@ import structlog
 logger = structlog.get_logger()
 
 _KEN_BURNS_MODES = ["zoom_in", "zoom_out", "pan_left", "pan_right"]
+_FONT_PATH = Path(__file__).parent.parent.parent.parent / "assets" / "fonts" / "Anton-Regular.ttf"
 
 
 def _run_ffmpeg(args: List[str], description: str = "") -> None:
@@ -82,6 +84,98 @@ def build_ken_burns_clip(
     )
 
     return output_path
+
+
+def build_number_card_clip(
+    number: int,
+    output_path: Path,
+    duration: float = 1.5,
+    width: int = 1920,
+    height: int = 1080,
+    fps: int = 30,
+) -> Path:
+    """Build a short transition card showing a big number (e.g. '7') on a dark background."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    img = Image.new("RGB", (width, height), color=(18, 18, 18))
+    draw = ImageDraw.Draw(img)
+
+    # Thin horizontal accent lines flanking the number
+    line_y_top = int(height * 0.30)
+    line_y_bot = int(height * 0.70)
+    line_x0, line_x1 = int(width * 0.35), int(width * 0.65)
+    draw.line([(line_x0, line_y_top), (line_x1, line_y_top)], fill=(200, 200, 200), width=3)
+    draw.line([(line_x0, line_y_bot), (line_x1, line_y_bot)], fill=(200, 200, 200), width=3)
+
+    # Big number
+    font_size = int(height * 0.50)
+    font = _load_card_font(font_size)
+    text = str(number)
+    try:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        x = (width - tw) // 2 - bbox[0]
+        y = (height - th) // 2 - bbox[1]
+    except Exception:
+        x, y = width // 2, height // 2
+
+    # Subtle shadow
+    draw.text((x + 5, y + 5), text, font=font, fill=(80, 80, 80))
+    draw.text((x, y), text, font=font, fill=(255, 255, 255))
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tf:
+        tmp_path = Path(tf.name)
+    img.save(str(tmp_path))
+
+    try:
+        fade_out_start = max(0.0, duration - 0.25)
+        vf = (
+            f"format=yuv420p,"
+            f"fade=t=in:st=0:d=0.2,"
+            f"fade=t=out:st={fade_out_start:.2f}:d=0.2"
+        )
+        _run_ffmpeg(
+            [
+                "-loop", "1",
+                "-i", str(tmp_path),
+                "-vf", vf,
+                "-t", str(duration),
+                "-c:v", "libx264",
+                "-profile:v", "high",
+                "-preset", "fast",
+                "-pix_fmt", "yuv420p",
+                "-r", str(fps),
+                "-an",
+                str(output_path),
+            ],
+            description=f"number_card_{number}",
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return output_path
+
+
+def _load_card_font(size: int):
+    from PIL import ImageFont
+
+    if _FONT_PATH.exists():
+        try:
+            return ImageFont.truetype(str(_FONT_PATH), size)
+        except Exception:
+            pass
+    for path in [
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]:
+        if Path(path).exists():
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
 
 
 def concat_video_clips(clip_paths: List[Path], output_path: Path) -> Path:

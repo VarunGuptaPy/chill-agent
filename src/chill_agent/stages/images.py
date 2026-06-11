@@ -80,8 +80,15 @@ def generate_images(
             tasks.append(("segment", seg_idx, img_idx, prompt, out_path, 1920, 1080))
 
     # Thumbnail — 1280×720 (YouTube thumbnail spec)
+    # Use a white-background style override so characters appear on white (not the blue segment bg)
+    thumb_style = (
+        "Cyanide and Happiness webcomic art style, simple stick figures with round white circle heads, "
+        "tiny black dot eyes, thin black arms and legs, horizontal row of characters, "
+        "PURE WHITE BACKGROUND, crisp black outlines, flat colors, no gradients, no shadows, "
+        "no colored background, no blue background, white canvas, simple clean composition"
+    )
     thumb_path = thumbnail_raw_path(output_root, run_id)
-    thumb_prompt = _build_prompt(script.thumbnail_prompt, style_suffix, llm)
+    thumb_prompt = _build_prompt(script.thumbnail_prompt, thumb_style, llm)
     tasks.append(("thumbnail", -1, 0, thumb_prompt, thumb_path, 1280, 720))
 
     # Prepare result structure

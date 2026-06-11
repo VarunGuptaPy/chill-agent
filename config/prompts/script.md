@@ -52,8 +52,10 @@ Rules for each image prompt:
   - "stick figure holding a human heart model, confused expression"
   - "stick figure inside Sistine Chapel looking up at ceiling, jaw dropped"
 
-For the thumbnail_prompt, describe a group scene:
-"group of 4-5 stick figure characters with round white heads, each doing something different related to [topic], exaggerated expressions, chaotic fun composition"
+For the thumbnail_prompt, describe a horizontal row scene specifically designed for a YouTube thumbnail:
+"5-6 stick figure characters with round white heads standing in a horizontal row across the bottom of a pure white background, each character doing something different and funny related to [topic], exaggerated expressions, facing slightly toward viewer, evenly spaced, simple props or objects related to each, white background, no border, no frame, no colored background"
+
+Keep the thumbnail_prompt under 40 words. Always specify: horizontal row, white background, exaggerated expressions, each character doing something different.
 
 ---
 
