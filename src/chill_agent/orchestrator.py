@@ -410,20 +410,21 @@ def make_one_video(
 
 
 def _cleanup_run_dir(run_output: Path, run_id: str) -> None:
-    """Delete all intermediate artifacts after a successful upload.
+    """Delete heavy intermediate artifacts after a successful upload.
 
-    Keeps script.json for reference; nukes images/, audio/, and the final MP4
-    since everything is already on YouTube and recorded in the DB.
+    Keeps script.json and thumbnail_a/b.jpg for reference and potential retry.
+    Deletes audio/, video/, and the images/ dir (large files).
     """
-    heavy = ["images", "audio"]
+    heavy = ["images", "audio", "video"]
     for subdir in heavy:
         target = run_output / subdir
         if target.exists():
             shutil.rmtree(target)
             logger.info("cleanup_deleted_dir", run_id=run_id, path=str(target))
 
-    for filename in ["final.mp4", "thumbnail_a.jpg", "thumbnail_b.jpg",
-                     "thumbnail_raw.png", "alignment.json", "narration.srt", "narration.ass"]:
+    # Delete large per-run files but keep thumbnails and script
+    for filename in ["final.mp4", "alignment.json", "narration.srt", "narration.ass",
+                     "captions.srt", "captions.ass"]:
         f = run_output / filename
         if f.exists():
             f.unlink()

@@ -64,6 +64,8 @@ def run_scheduler(
         trigger=IntervalTrigger(seconds=interval_seconds),
         id="pipeline",
         next_run_time=datetime.now(timezone.utc),  # run immediately on start
+        max_instances=1,  # never run two pipeline jobs concurrently
+        coalesce=True,    # if a run was missed while busy, fire once (not many)
     )
     scheduler.start()
     logger.info("scheduler_running", press_ctrl_c="to stop")

@@ -31,23 +31,26 @@ Segment label: {label}
 Narration:
 {narration}
 
-Generate image prompts that visually illustrate this narration beat-by-beat, like b-roll cuts.
-Each time the narration shifts to a new idea, analogy, example, or joke — that is a new image.
+Generate image prompts that visually illustrate this narration beat-by-beat, like b-roll cuts in a YouTube video.
+Each time the narration shifts to a new idea, analogy, example, step, fact, or joke — that is a new image.
+The viewer should NEVER stare at the same image for more than 15–20 seconds.
+
+MINIMUM REQUIREMENT: Generate at least 10 image prompts per segment. A 300-word segment needs 10–14 images. \
+A 400-word segment needs 12–16 images. More is better — err on the side of too many.
 
 Rules:
 - Each prompt must be a clear, specific scene description under 35 words
 - Use actual names for real things: if the narration mentions Gol Gumbaz, write "Gol Gumbaz"; \
 if it mentions the Mariana Trench, write "Mariana Trench"; never replace a specific thing with a generic description
-- Include a stick figure character in most images doing something relevant
-- Every image must show a DIFFERENT scene/pose — no repeats
+- Include a stick figure character in most images doing something relevant to the narration beat
+- Every image must show a VISUALLY DISTINCT scene — different location, pose, action, or subject from all others in this segment
 - Describe the scene only — do NOT mention art style
+- Match each image to the exact beat of narration: explanation → show it; analogy → show the analogy; punchline → show the reaction; statistic → show the scale
 
 Return ONLY a JSON object:
 {{
   "image_prompts": ["prompt 1", "prompt 2", ...]
 }}
-
-Generate as many prompts as the narration needs (typically 5–10 for a 300-word segment).
 """
 
 _THUMBNAIL_PROMPT = """\
@@ -99,7 +102,7 @@ def reprompt_images(
             user=user_msg,
             temperature=0.9,
             json_mode=True,
-            max_tokens=1024,
+            max_tokens=2048,
         )
         total_input += result.input_tokens
         total_output += result.output_tokens

@@ -207,8 +207,8 @@ def _parse_script(raw: str) -> Script:
 
         if not image_prompts:
             image_prompts = ["stick figure character looking surprised"]
-        # Cap at 12 as a safeguard against runaway output
-        image_prompts = image_prompts[:12]
+        # Cap at 20 as a safeguard against runaway output
+        image_prompts = image_prompts[:20]
 
         # Skip segments without a real narration (truncation artefacts)
         narration = str(seg_data.get("narration", "")).strip()
