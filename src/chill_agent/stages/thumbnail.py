@@ -57,7 +57,7 @@ def _render_thumbnail(
 
     # --- Image zone: bottom 68% of canvas ---
     img_zone_y = text_zone_h
-    img_zone_h = H - text_zone_y
+    img_zone_h = H - text_zone_h
     img_zone_w = W
 
     source_img = Image.open(str(source)).convert("RGBA")
